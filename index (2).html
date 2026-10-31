@@ -1,0 +1,277 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#0b0d12"><title>Cheetah</title>
+<link rel="icon" href="logo.png">
+<style>
+:root{--bg:#0b0d12;--c:#161a23;--line:#242a38;--tx:#f3f5fa;--mu:#8b94a8;--r:#ff3b30;--r2:#ff6a3d}
+*{box-sizing:border-box;margin:0;-webkit-tap-highlight-color:transparent}
+body{background:var(--bg);color:var(--tx);font:15px/1.45 system-ui,sans-serif;overflow-x:hidden}
+button,input,select{font:inherit;color:inherit;border:0;background:none;cursor:pointer}
+svg{width:22px;height:22px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round;flex:none}
+header{position:sticky;top:0;z-index:5;display:flex;align-items:center;gap:10px;padding:calc(10px + env(safe-area-inset-top,0px)) 14px 10px;background:rgba(11,13,18,.92);backdrop-filter:blur(12px)}
+header img{width:40px;height:40px;border-radius:11px}
+header b{flex:1;font-size:21px;letter-spacing:.06em}
+.ib{width:44px;height:44px;border-radius:50%;background:var(--c);border:1px solid var(--line);display:grid;place-items:center;position:relative}
+.dot{position:absolute;top:2px;right:2px;min-width:18px;height:18px;border-radius:9px;background:var(--r);font-size:11px;font-weight:700;display:grid;place-items:center;padding:0 4px}
+main{padding:6px 14px 120px;max-width:1100px;margin:0 auto}
+.hero{position:relative;height:240px;border-radius:26px;overflow:hidden;background:#222 center/cover;margin-bottom:14px;display:flex;align-items:flex-end}
+.hero::before{content:"";position:absolute;inset:0;background:linear-gradient(0deg,#0b0d12 8%,transparent 70%)}
+.hero div{position:relative;padding:18px;width:100%}
+.hero h2{font-size:24px;line-height:1.15;margin-bottom:10px}
+.pb{display:inline-flex;align-items:center;gap:6px;background:linear-gradient(135deg,var(--r),var(--r2));padding:11px 20px;border-radius:14px;font-weight:700}
+.chips{display:flex;gap:8px;overflow-x:auto;padding:4px 0 12px;scrollbar-width:none}
+.chip{white-space:nowrap;padding:8px 15px;border-radius:99px;background:var(--c);border:1px solid var(--line);color:var(--mu);font-weight:600;font-size:13px}
+.chip.on{background:var(--r);border-color:var(--r);color:#fff}
+.grid{display:grid;grid-template-columns:repeat(2,1fr);gap:14px}
+@media(min-width:600px){.grid{grid-template-columns:repeat(4,1fr)}}
+@media(min-width:900px){.grid{grid-template-columns:repeat(6,1fr)}}
+.m{min-width:0;cursor:pointer}
+.p{position:relative;aspect-ratio:2/3;border-radius:20px;overflow:hidden;background:var(--c);border:1px solid var(--line)}
+.p img{width:100%;height:100%;object-fit:cover;display:block}
+.p span{position:absolute;top:8px;font-size:12px;font-weight:700;padding:4px 9px;border-radius:99px}
+.p .r{left:8px;background:linear-gradient(135deg,#ffb020,#ff8a1f);color:#111}.p .y{right:8px;background:rgba(0,0,0,.7)}
+.m h4{font-size:14px;margin:8px 3px 0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.ad{display:block;margin:0 0 14px;border-radius:18px;overflow:hidden;position:relative;border:1px solid var(--line)}
+.ad img{width:100%;max-height:120px;object-fit:cover;display:block}
+.ad small{position:absolute;top:6px;left:8px;background:rgba(0,0,0,.65);padding:1px 7px;border-radius:6px;font-size:10px}
+.empty{grid-column:1/-1;text-align:center;color:var(--mu);padding:50px 10px}
+.sr{width:100%;background:var(--c);border:1.5px solid var(--line);border-radius:16px;padding:13px 16px;font-size:16px;outline:0;margin-bottom:14px;cursor:text}
+h3{margin:6px 3px 12px;font-size:18px}
+#bn{position:fixed;z-index:6;left:12px;right:12px;bottom:calc(12px + env(safe-area-inset-bottom,0px));max-width:640px;margin:auto;display:flex;padding:8px;background:#171c27;border:1px solid var(--line);border-radius:28px;box-shadow:0 10px 30px rgba(0,0,0,.5)}
+#bn button{flex:1;display:flex;flex-direction:column;align-items:center;gap:2px;padding:7px 0;border-radius:20px;color:var(--mu);font-size:12px;font-weight:600}
+#bn button.on{background:linear-gradient(135deg,var(--r),var(--r2));color:#fff}
+.ov{position:fixed;inset:0;z-index:20;background:var(--bg);overflow-y:auto;display:none;padding-bottom:40px}
+.ov.on{display:block}
+.bk{position:absolute;top:calc(12px + env(safe-area-inset-top,0px));left:12px;z-index:2;background:rgba(0,0,0,.6)}
+.bd{height:300px;background:#222 center/cover;position:relative}
+.bd::after{content:"";position:absolute;inset:0;background:linear-gradient(0deg,var(--bg) 4%,transparent 70%)}
+.in{padding:0 16px;max-width:800px;margin:-50px auto 0;position:relative;z-index:1}
+.in h1{font-size:26px;line-height:1.15}
+.meta{color:var(--mu);margin:6px 0 14px;font-size:13px}
+.acts{display:flex;gap:10px;margin:14px 0}
+.acts .pb{flex:1;justify-content:center}.acts .ib{border-radius:14px;width:50px;height:auto}
+.ov p.o{color:#c4cad8;margin-bottom:14px}
+.cast{display:flex;gap:12px;overflow-x:auto;scrollbar-width:none;margin-bottom:16px}
+.cast div{width:72px;flex:none;text-align:center;font-size:11px;color:var(--mu)}
+.cast img{width:72px;height:72px;border-radius:50%;object-fit:cover;background:var(--c);margin-bottom:4px}
+select{background:var(--c);border:1.5px solid var(--line);border-radius:12px;padding:10px 12px;margin-bottom:10px}
+.ep{display:flex;gap:10px;align-items:center;width:100%;text-align:left;padding:10px;border-radius:14px;background:var(--c);border:1px solid var(--line);margin-bottom:8px}
+.ep b{color:var(--r);min-width:26px}.ep span{flex:1;font-size:14px}
+#pl .top{display:flex;align-items:center;gap:10px;padding:calc(10px + env(safe-area-inset-top,0px)) 12px 10px}
+#pl .top b{flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.vb{aspect-ratio:16/9;background:#000;width:100%;max-height:70vh}
+.vb iframe,.vb video{width:100%;height:100%;border:0;display:block}
+.srv{display:flex;gap:8px;padding:14px;flex-wrap:wrap}
+.nt{display:flex;gap:12px;background:var(--c);border:1px solid var(--line);border-radius:18px;padding:10px;margin-bottom:10px;cursor:pointer}
+.nt img{width:56px;height:56px;border-radius:12px;object-fit:cover;flex:none}
+.nt small{color:var(--mu);display:block}
+#pop{z-index:30;background:rgba(0,0,0,.7);display:none;place-items:center;position:fixed;inset:0;padding:20px}
+#pop.on{display:grid}
+#pop>div{background:var(--c);border:1px solid var(--line);border-radius:26px;padding:20px;width:min(380px,100%);display:grid;gap:12px;text-align:center}
+#pop img{width:100%;border-radius:16px}
+#toast{position:fixed;top:calc(14px + env(safe-area-inset-top,0px));left:50%;transform:translateX(-50%);background:#fff;color:#111;padding:10px 18px;border-radius:14px;font-weight:700;display:none;z-index:99;max-width:90%}
+.row{display:flex;gap:12px;overflow-x:auto;scrollbar-width:none;padding-bottom:8px;margin-bottom:8px}.row .m{width:128px;flex:none}
+.hero{transition:background-image .4s}
+.sk{aspect-ratio:2/3;border-radius:20px;background:linear-gradient(90deg,#161a23,#1e2431,#161a23);background-size:200% 100%;animation:sh 1.2s infinite}@keyframes sh{to{background-position:-200% 0}}
+.dp{width:118px;aspect-ratio:2/3;object-fit:cover;border-radius:16px;border:2px solid var(--r);flex:none;background:var(--c)}.in h1{font-size:24px}
+</style></head><body>
+<div id="toast"></div>
+<header><img src="logo.png" alt=""><b>CHEETAH</b>
+<button class="ib" id="sb"><svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.3-4.3"/></svg></button>
+<button class="ib" id="bell"><svg viewBox="0 0 24 24"><path d="M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9M13.7 21a2 2 0 0 1-3.4 0"/></svg><i class="dot" id="nc" style="display:none;font-style:normal"></i></button></header>
+<div id="dbg" style="display:none;margin:8px 14px;padding:10px 14px;border-radius:14px;background:#3a1519;color:#ffb4ae;font-size:13px;word-break:break-word"></div>
+<script>function dbg(t){var e=document.getElementById("dbg");if(e){e.style.display="block";e.textContent=t}}onerror=function(m){dbg("JS error: "+m)};setTimeout(function(){if(!window.__ok)dbg("Firebase did not load. Open this page from an https:// link (not as a file or inside another app) and check your internet.")},7000);</script>
+<main id="mn"></main>
+<nav id="bn">
+<button data-t="home" class="on"><svg viewBox="0 0 24 24"><path d="M3 11l9-8 9 8v9a1 1 0 0 1-1 1h-5v-6H9v6H4a1 1 0 0 1-1-1z"/></svg>Home</button>
+<button data-t="cat"><svg viewBox="0 0 24 24"><path d="M12 3l9 5-9 5-9-5zM3 13l9 5 9-5"/></svg>Categories</button>
+<button data-t="search"><svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.3-4.3"/></svg>Search</button>
+<button data-t="list"><svg viewBox="0 0 24 24"><path d="M6 3h12v18l-6-4-6 4z"/></svg>My List</button>
+<button data-t="me"><svg viewBox="0 0 24 24"><circle cx="12" cy="8" r="4"/><path d="M4 21c0-4 4-6 8-6s8 2 8 6"/></svg>Profile</button></nav>
+<div class="ov" id="lg"></div><div class="ov" id="dt"></div><div class="ov" id="pl"></div>
+<div id="pop"><div id="pc"></div></div>
+
+<script>(()=>{
+// ===== SETTINGS: paste your TMDB key here =====
+const TMDB_KEY="17509a46d9802f1f5b73bf7b9d8bad7c";
+const FS="https://firestore.googleapis.com/v1/projects/cheetah-70c03/databases/(default)/documents/",AK="AIzaSyDTGwyd1AK62ZeMiv1MZ0SseCZAsBqbd9U";
+const mf=f=>{const o={};for(const k in f||{})o[k]=dv(f[k]);return o};
+const dv=v=>{if("stringValue"in v)return v.stringValue;if("integerValue"in v)return +v.integerValue;if("doubleValue"in v)return v.doubleValue;if("booleanValue"in v)return v.booleanValue;if("timestampValue"in v)return{seconds:Math.floor(Date.parse(v.timestampValue)/1000)};if("arrayValue"in v)return(v.arrayValue.values||[]).map(dv);if("mapValue"in v)return mf(v.mapValue.fields);return null};
+async function col(c){const out=[];let t="";do{const r=await fetch(FS+c+"?pageSize=300&key="+AK+(t?"&pageToken="+encodeURIComponent(t):""));const j=await r.json();if(!r.ok)throw new Error(j.error&&j.error.message||r.status);(j.documents||[]).forEach(d=>out.push({id:d.name.split("/").pop(),...mf(d.fields)}));t=j.nextPageToken||""}while(t);return out}
+window.__ok=1;const $=id=>document.getElementById(id),IMG="https://image.tmdb.org/t/p/";
+const esc=s=>String(s??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+const toast=m=>{const t=$("toast");t.textContent=m;t.style.display="block";clearTimeout(t._t);t._t=setTimeout(()=>t.style.display="none",2600)};
+const ls=(k,d)=>{try{return JSON.parse(localStorage.getItem(k))??d}catch{return d}},sv=(k,v)=>{try{localStorage.setItem(k,JSON.stringify(v))}catch{}};
+const G={28:"Action",12:"Adventure",16:"Animation",35:"Comedy",80:"Crime",99:"Documentary",18:"Drama",10751:"Family",14:"Fantasy",36:"History",27:"Horror",9648:"Mystery",10749:"Romance",878:"Sci-Fi",53:"Thriller",10752:"War",10759:"Action",10765:"Sci-Fi",10768:"War"};
+let items=[],ads=[],nots=[],tab="home",type="all",genre="",q="",favs=ls("fav",[]),seen=ls("seen",0),so="new",feat=[],hi=0,cw=ls("cw",[]),lastEp=ls("le",{}),epc={};
+const K=n=>n.type+"_"+n.tmdbId;
+const ic=p=>`<svg viewBox="0 0 24 24">${p}</svg>`;
+const PLAY=ic('<path d="M7 4l13 8-13 8z" fill="currentColor"/>');
+
+async function load(){
+  try{
+    const a=[];for(const c of ["movies","series"])(await col(c)).forEach(d=>a.push(d));
+    const t=x=>(x.approvedAt||x.createdAt)?.seconds||0;items=a.sort((x,y)=>t(y)-t(x));
+  }catch(e){dbg("Firestore error: "+e.message+(/permission/i.test(e.message)?" -> Publish the Firestore rules in Firebase Console.":""))}
+  try{ads=[];(await col("ads")).forEach(x=>{if(x.active)ads.push(x)})}catch{}
+  try{nots=[];(await col("notifications")).forEach(x=>nots.push(x));nots.sort((x,y)=>(y.createdAt?.seconds||0)-(x.createdAt?.seconds||0))}catch{}
+  if(!items.length&&!$("dbg").textContent)dbg("Connected, but found 0 titles in movies/series. In admin: Import > Send to Pending > Pending tab > Approve, then reload this page.");chk();badge();render();popup();
+}
+function badge(){const n=nots.filter(x=>(x.createdAt?.seconds||0)>seen).length;$("nc").style.display=n?"grid":"none";$("nc").textContent=n}
+async function popup(){
+  try{const a=[];(await col("popups")).forEach(x=>{if(x.active)a.push(x)});
+    a.sort((x,y)=>(y.createdAt?.seconds||0)-(x.createdAt?.seconds||0));const p=a[0];if(!p||ls("pop")===p.id)return;
+    $("pc").innerHTML=`${p.image?`<img src="${esc(p.image)}" alt="">`:""}<h3>${esc(p.title)}</h3><p style="color:var(--mu)">${esc(p.message)}</p>${p.link?`<a class="pb" style="justify-content:center;text-decoration:none;color:#fff" href="${esc(p.link)}" target="_blank" rel="noopener">${esc(p.btn||"Open")}</a>`:""}<button class="chip" id="px">Close</button>`;
+    $("pop").classList.add("on");$("px").onclick=()=>{$("pop").classList.remove("on");sv("pop",p.id)};
+  }catch{}
+}
+const adHtml=pl=>{const a=ads.filter(x=>!x.place||x.place===pl);if(!a.length)return"";const x=a[Math.floor(Math.random()*a.length)];
+  return `<a class="ad" href="${esc(x.link||"#")}" target="_blank" rel="noopener"><img src="${esc(x.image)}" alt=""><small>Ad</small></a>`};
+const card=n=>`<div class="m" data-k="${K(n)}"><div class="p"><img loading="lazy" src="${esc(n.poster||n.backdrop)}" alt=""><span class="r">★ ${(+n.rating||0).toFixed(1)}</span><span class="y">${esc(n.year||"")}</span></div><h4>${esc(n.title)}</h4></div>`;
+const grid=a=>`<div class="grid">${a.length?a.map(card).join(""):'<div class="empty">Nothing here yet. Approve titles in the admin panel.</div>'}</div>`;
+const flt=()=>{const a=items.filter(n=>(type==="all"||n.type===type)&&(!genre||(n.genreIds||[]).some(g=>G[g]===genre))&&n.title.toLowerCase().includes(q.toLowerCase())&&(!lf||n.lang===lf)&&(+n.rating||0)>=mr);if(so==="top")a.sort((x,y)=>(y.rating||0)-(x.rating||0));if(so==="az")a.sort((x,y)=>x.title.localeCompare(y.title));return a};
+const chips=(arr,cur,a)=>`<div class="chips">${arr.map(([v,l])=>`<button class="chip ${cur===v?"on":""}" data-${a}="${esc(v)}">${esc(l)}</button>`).join("")}</div>`;
+const TYPES=[["all","All"],["movie","Movies"],["tv","Series"]];
+const row=(t,a,sa)=>a.length?`<div style="display:flex;justify-content:space-between;align-items:baseline"><h3>${t}</h3>${sa?`<button class="chip" style="background:none;border:0" data-sa="${sa}">See all ›</button>`:""}</div><div class="row">${a.map(card).join("")}</div>`:"";
+
+function render(){
+  document.querySelectorAll("#bn button").forEach(b=>b.classList.toggle("on",b.dataset.t===tab));
+  const m=$("mn");let h="";
+  if(tab==="home"){
+    feat=[...items].filter(x=>x.backdrop||x.poster).sort((a,b)=>(b.rating||0)-(a.rating||0)).slice(0,5);hi=0;const f=feat[0];
+    const top=[...items].sort((a,b)=>(b.rating||0)-(a.rating||0)).slice(0,12);
+    h=(f?`<div class="hero" id="hr" style="background-image:url('${esc(f.backdrop||f.poster)}')" data-k="${K(f)}"><div><h2 id="hh">${esc(f.title)}</h2><span class="pb">${PLAY}Watch now</span></div></div>`:"")+adHtml("Home")
+     +row("Continue watching",cw.map(k=>items.find(x=>K(x)===k)).filter(Boolean))+row("New & latest",items.slice(0,12),"new")+row("Top rated",top,"top")
+     +row("Movies",items.filter(x=>x.type==="movie").slice(0,12),"movie")+row("Series",items.filter(x=>x.type==="tv").slice(0,12),"tv")
+     +"<h3>Browse all</h3>"+chips(TYPES,type,"ty")+grid(flt());
+  }else if(tab==="cat"){
+    const gs=[...new Set(Object.values(G))].sort();
+    h=chips([["","All"],...gs.map(g=>[g,g])],genre,"ge")+chips(TYPES,type,"ty")+`<select id="so">${[["new","Newest"],["top","Top rated"],["az","A-Z"]].map(([v,l])=>`<option value="${v}"${so===v?" selected":""}>${l}</option>`).join("")}</select>`+" "+fsel()+grid(flt());
+  }else if(tab==="search"){
+    h=`<input class="sr" id="qi" placeholder="Search movies and series" value="${esc(q)}">`+(q?"":chips(rsr.map(x=>[x,x]),"","rs"))+adHtml("Search")+`<div id="sres">${grid(q?flt():[])}</div>`;
+  }else if(tab==="list"){
+    const f=items.filter(n=>favs.includes(K(n))),hs=cw.map(k=>items.find(x=>K(x)===k)).filter(Boolean);
+    h="<h3>My List</h3>"+chips([["f","Saved ("+f.length+")"],["h","History ("+hs.length+")"]],lt,"lt")+grid(lt==="f"?f:hs);
+  }else{
+    const f=items.filter(n=>favs.includes(K(n)));
+    const B=(a,t)=>`<button class="ep" data-ac="${a}"><span>${t}</span></button>`;
+    h=`<div class="nt" style="cursor:default"><div><b>${U?esc(U.email):"Guest"}</b><small>${U?"Synced to your account":"Sign in to sync your list"}</small></div></div>`+(U?"":B("in","Sign in / Create account"))+B("srv","Default server: "+SRV[dsv][0])+B("req","Request a movie")+B("share","Share app")+B("rate","Rate app")+B("privacy","Privacy policy")+B("about","About")+B("clh","Clear watch history")+B("clc","Clear cache")+(U?B("out","Log out"):"");
+  }
+  m.innerHTML=h;
+  const lfs=$("lf");if(lfs)lfs.onchange=e=>{lf=e.target.value;render()};const mrs=$("mr");if(mrs)mrs.onchange=e=>{mr=+e.target.value;render()};const sos=$("so");if(sos)sos.onchange=e=>{so=e.target.value;render()};const qi=$("qi");if(qi)qi.oninput=e=>{q=e.target.value;$("sres").innerHTML=grid(q?flt():[])};if(qi)qi.onchange=()=>{if(q.length>2){rsr=[q,...rsr.filter(x=>x!==q)].slice(0,6);sv("rsr",rsr)}};
+}
+document.querySelectorAll("#bn button").forEach(b=>b.onclick=()=>{tab=b.dataset.t;q=tab==="search"?q:"";genre=tab==="cat"?genre:"";scrollTo(0,0);render();if(tab==="search")$("qi").focus()});
+$("sb").onclick=()=>{tab="search";render();$("qi").focus()};
+$("bell").onclick=()=>{seen=Math.floor(Date.now()/1000);sv("seen",seen);badge();
+  $("dt").innerHTML=`<button class="ib bk" id="bx">${ic('<path d="M15 18l-6-6 6-6"/>')}</button><div class="in" style="margin-top:0;padding-top:70px"><h1 style="margin-bottom:14px">Notifications</h1>${nots.length?nots.map(n=>`<div class="nt" data-k="${esc(n.movieId||"")}"><img src="${esc(n.image||"")}" alt=""><div><b>${esc(n.title)}</b><small>${esc(n.body)}</small></div></div>`).join(""):'<div class="empty">No notifications yet.</div>'}</div>`;
+  show($("dt"));$("bx").onclick=()=>history.back()};
+
+document.addEventListener("click",e=>{
+  const c=e.target.closest("[data-ty],[data-ge]"),k=e.target.closest("[data-k]");
+  if(c){if(c.dataset.ty)type=c.dataset.ty;if(c.dataset.ge!==undefined)genre=c.dataset.ge;render();return}
+  if(k&&k.dataset.k){const n=items.find(x=>K(x)===k.dataset.k);if(n)detail(n)}
+});
+
+// details
+async function tm(p){const r=await fetch(`https://api.themoviedb.org/3/${p}${p.includes("?")?"&":"?"}api_key=${TMDB_KEY}`);if(!r.ok)throw 0;return r.json()}
+async function detail(n){
+  const d=$("dt"),fv=()=>favs.includes(K(n)),rs=lastEp[K(n)];
+  d.innerHTML=`<button class="ib bk" id="bx">${ic('<path d="M15 18l-6-6 6-6"/>')}</button><div class="bd" style="background-image:url('${esc(n.backdrop||n.poster)}')"></div><div class="in" style="margin-top:-90px"><div style="display:flex;gap:14px;align-items:flex-end"><img class="dp" src="${esc(n.poster||n.backdrop)}" alt=""><div style="min-width:0"><h1>${esc(n.title)}</h1><div class="meta" style="margin:6px 0 0"><span style="color:#ffb020;font-weight:700">★ ${(+n.rating||0).toFixed(1)}</span> · ${esc(n.year)}</div></div></div>
+  <div class="acts" id="ac"><button class="pb" id="pm">${PLAY}${rs?`Resume S${rs.s} E${rs.e}`:"Play on "+SRV[dsv][0]}</button><button class="ib" id="fv">${ic('<path d="M12 21s-8-5.3-8-11a4.5 4.5 0 0 1 8-2.8A4.5 4.5 0 0 1 20 10c0 5.7-8 11-8 11z"/>')}</button></div>
+  <div class="chips"><span class="chip">${n.type==="tv"?"TV Series":"Movie"}</span><span class="chip">${esc(n.year)}</span>${(n.genreIds||[]).filter(g=>G[g]).slice(0,4).map(g=>`<span class="chip on">${G[g]}</span>`).join("")}</div>
+  <h3>Synopsis</h3><p class="o" id="ov" style="display:-webkit-box;-webkit-line-clamp:4;-webkit-box-orient:vertical;overflow:hidden;margin-bottom:4px">${esc(n.overview)}</p><button id="rm" style="color:var(--r);font-weight:700;margin-bottom:14px">Read more</button><div id="cs"></div><div id="eps"></div><div id="sm"></div>${adHtml("Details")}</div>`;
+  show(d);d.scrollTop=0;
+  $("bx").onclick=()=>history.back();
+  const paint=()=>$("fv").style.color=fv()?"var(--r)":"";paint();
+  $("fv").onclick=()=>{favs=fv()?favs.filter(x=>x!==K(n)):[...favs,K(n)];save();paint();toast(fv()?"Added to My list":"Removed")};
+  $("rm").onclick=()=>{const o=$("ov"),c=o.style.webkitLineClamp!=="unset";o.style.webkitLineClamp=c?"unset":"4";$("rm").textContent=c?"Show less":"Read more"};
+  $("pm").onclick=()=>rs?play(n,rs.s,rs.e):play(n,1,1);
+  $("ac").insertAdjacentHTML("beforeend",'<button class="ib" id="sh" style="width:auto;padding:0 14px;font-weight:700;border-radius:14px">Share</button>');$("sh").onclick=()=>shr(n.title);
+  $("sm").innerHTML=row("More like this",items.filter(x=>K(x)!==K(n)&&(x.genreIds||[]).some(g=>(n.genreIds||[]).includes(g))).slice(0,12));
+  if(n.manual||!TMDB_KEY.length||TMDB_KEY.startsWith("PASTE"))return;
+  try{
+    const j=await tm(`${n.type}/${n.tmdbId}?append_to_response=credits,videos`);
+    const cs=(j.credits?.cast||[]).slice(0,15);
+    const tv=(j.videos?.results||[]).find(v=>v.site==="YouTube"&&v.type==="Trailer");
+    if(tv){$("ac").insertAdjacentHTML("beforeend",'<button class="ib" id="tr" style="width:auto;padding:0 14px;font-weight:700;border-radius:14px">Trailer</button>');$("tr").onclick=()=>play({manual:true,trailer:true,videoType:"youtube",youtubeId:tv.key,title:n.title+" (Trailer)",type:"movie",tmdbId:n.tmdbId},1,1)}
+    if(cs.length)$("cs").innerHTML=`<h3>Cast</h3><div class="cast">${cs.map(x=>`<div><img loading="lazy" src="${x.profile_path?IMG+"w185"+x.profile_path:""}" alt=""><span>${esc(x.name)}</span></div>`).join("")}</div>`;
+    if(n.type==="tv"){
+      const ss=(j.seasons||[]).filter(s=>s.season_number>0);
+      $("eps").innerHTML=`<select id="ss">${ss.map(s=>`<option value="${s.season_number}">Season ${s.season_number}</option>`).join("")}</select><div id="el"></div>`;
+      const ep=async()=>{const s=+$("ss").value;try{const r=await tm(`tv/${n.tmdbId}/season/${s}`);
+        epc[K(n)+"_"+s]=r.episodes.length;$("el").innerHTML=r.episodes.map(x=>`<button class="ep" data-s="${s}" data-e="${x.episode_number}"><b>${x.episode_number}</b><span>${esc(x.name)}</span>${PLAY}</button>`).join("")}catch{}};
+      $("ss").onchange=ep;ep();
+      $("el").onclick=e=>{const b=e.target.closest(".ep");if(b)play(n,+b.dataset.s,+b.dataset.e)};
+    }
+  }catch{}
+}
+
+// player
+const SRV={vidlink:["VidLink",(n,s,e)=>n.type==="tv"?`https://vidlink.pro/tv/${n.tmdbId}/${s}/${e}`:`https://vidlink.pro/movie/${n.tmdbId}`],
+ vidsrc:["VidSrc",(n,s,e)=>n.type==="tv"?`https://vidsrc.to/embed/tv/${n.tmdbId}/${s}/${e}`:`https://vidsrc.to/embed/movie/${n.tmdbId}`]};
+function play(n,s,e,srv=dsv){
+  const p=$("pl");let url="",direct="";
+  if(!n.trailer){cw=[K(n),...cw.filter(x=>x!==K(n))].slice(0,12);if(n.type==="tv")lastEp[K(n)]={s,e};save()}
+  if(n.manual){
+    if(n.videoType==="youtube")url=`https://www.youtube.com/embed/${n.youtubeId}?autoplay=1`;
+    else if(n.videoType==="facebook")url=`https://www.facebook.com/plugins/video.php?href=${encodeURIComponent(n.videoUrl)}&show_text=false&autoplay=true`;
+    else direct=n.videoUrl;
+  }else url=SRV[srv][1](n,s,e);
+  const sub=n.type==="tv"?` · S${s} E${e}`:"";
+  p.innerHTML=`<div class="top"><button class="ib" id="pb">${ic('<path d="M15 18l-6-6 6-6"/>')}</button><b>${esc(n.title+sub)}</b><button class="ib" id="ct">${ic('<path d="M2 8V6a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2h-6M2 12a9 9 0 0 1 8 8M2 16a5 5 0 0 1 4 4M2 20h.01"/>')}</button></div>
+  <div class="vb">${direct?`<video id="vv" controls autoplay playsinline src="${esc(direct)}"></video>`:`<iframe src="${esc(url)}" allow="autoplay; fullscreen; encrypted-media; picture-in-picture" allowfullscreen referrerpolicy="origin"></iframe>`}</div>
+  <div class="srv" style="padding-bottom:0"><button class="chip" data-pa="fs">Fullscreen</button>${direct?'<button class="chip" data-pa="pip">Picture in picture</button>':""}<button class="chip" data-pa="rp">Report problem</button></div>
+  ${n.manual?"":`<div class="srv">${Object.entries(SRV).map(([k,v])=>`<button class="chip ${k===srv?"on":""}" data-sv="${k}">${v[0]}</button>`).join("")}${n.type==="tv"&&e<(epc[K(n)+"_"+s]||999)?`<button class="chip" data-nx="1">Next episode ></button>`:""}<small style="color:var(--mu);width:100%">Video not loading? Try the other server.</small></div>`}
+  ${adHtml("Player")}`;
+  show(p);
+  $("pb").onclick=()=>history.back();
+  p.querySelectorAll("[data-sv]").forEach(b=>b.onclick=()=>play(n,s,e,b.dataset.sv));p.querySelectorAll("[data-pa]").forEach(b=>b.onclick=async()=>{const a=b.dataset.pa;if(a==="fs"){try{await p.querySelector(".vb").requestFullscreen();if(screen.orientation&&screen.orientation.lock)screen.orientation.lock("landscape").catch(()=>{})}catch{toast("Fullscreen not supported")}}else if(a==="pip"){try{await p.querySelector("video").requestPictureInPicture()}catch{toast("PiP not supported")}}else report(n,s,e,srv)});
+  const nx=p.querySelector("[data-nx]");if(nx)nx.onclick=()=>play(n,s,e+1,srv);
+  $("ct").onclick=async()=>{
+    try{
+      const v=$("vv");
+      if(v&&v.remote){await v.remote.prompt();return}
+      if(window.PresentationRequest){const r=new PresentationRequest([url]);await r.start();toast("Casting to your TV");return}
+    }catch(x){if(x&&x.name==="NotAllowedError")return;if(x&&x.name==="NotFoundError")return toast("No TV found on this Wi-Fi")}
+    toast("Use your phone Cast / Smart View screen mirroring");
+  };
+}
+const APP_VER=1,RATE="",AU="https://identitytoolkit.googleapis.com/v1/accounts:";
+let U=ls("u",null),dsv=ls("srv","vidlink"),lt="f",lf="",mr=0,rsr=ls("rsr",[]);
+const save=()=>{sv("fav",favs);sv("cw",cw);sv("le",lastEp);push()};
+async function auth(m,email,pw){const r=await fetch(AU+m+"?key="+AK,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({email,password:pw,returnSecureToken:true})});const j=await r.json();if(!r.ok){const c=(j.error&&j.error.message||"Failed");throw new Error(/OPERATION_NOT_ALLOWED/.test(c)?"Enable Email/Password in Firebase > Authentication":c.replace(/_/g," "))}U={uid:j.localId,email:j.email,idToken:j.idToken,refresh:j.refreshToken,exp:Date.now()+(+j.expiresIn-60)*1000};sv("u",U)}
+async function tok(){if(!U)return null;if(Date.now()>U.exp){const r=await fetch("https://securetoken.googleapis.com/v1/token?key="+AK,{method:"POST",headers:{"Content-Type":"application/x-www-form-urlencoded"},body:"grant_type=refresh_token&refresh_token="+encodeURIComponent(U.refresh)});const j=await r.json();if(!r.ok){U=null;sv("u",null);return null}U.idToken=j.id_token;U.refresh=j.refresh_token;U.exp=Date.now()+(+j.expires_in-60)*1000;sv("u",U)}return U.idToken}
+async function push(){const t=await tok();if(!t)return;fetch(FS+"users/"+U.uid+"?updateMask.fieldPaths=d",{method:"PATCH",headers:{Authorization:"Bearer "+t,"Content-Type":"application/json"},body:JSON.stringify({fields:{d:{stringValue:JSON.stringify({fav:favs,cw,le:lastEp})}}})}).catch(()=>{})}
+async function pull(){const t=await tok();if(!t)return;try{const r=await fetch(FS+"users/"+U.uid,{headers:{Authorization:"Bearer "+t}});if(!r.ok)return;const d=JSON.parse((await r.json()).fields.d.stringValue);favs=[...new Set([...(d.fav||[]),...favs])];cw=[...new Set([...(d.cw||[]),...cw])].slice(0,12);lastEp={...(d.le||{}),...lastEp};save()}catch{}}
+async function post(c,data){const t=await tok();if(!t)throw new Error("Sign in first");const f={};for(const k in data)f[k]={stringValue:String(data[k]??"")};f.createdAt={timestampValue:new Date().toISOString()};const r=await fetch(FS+c+"?key="+AK,{method:"POST",headers:{"Content-Type":"application/json",Authorization:"Bearer "+t},body:JSON.stringify({fields:f})});if(!r.ok)throw new Error("Failed. Check Firestore rules.")}
+function loginUI(){const l=$("lg");l.innerHTML=`<div class="in" style="margin:0 auto;padding-top:9vh"><img src="${document.querySelector("header img").src}" style="width:90px;border-radius:22px;display:block;margin:0 auto 12px" alt=""><h1 style="text-align:center">Cheetah</h1><p class="o" style="text-align:center">Sign in to sync your list on every phone</p><input class="sr" id="lem" type="email" placeholder="Email" autocomplete="username"><input class="sr" id="lpw" type="password" placeholder="Password (6+ characters)" autocomplete="current-password"><div id="lerr" style="color:#ff8a80;min-height:20px;font-size:13px;margin-bottom:8px"></div><div class="acts"><button class="pb" id="li">Sign in</button><button class="pb" id="lc" style="background:#222a3a">Create account</button></div><button class="chip" id="lk" style="display:block;margin:10px auto">Continue as guest</button></div>`;l.classList.add("on");
+ const go=async m=>{$("lerr").textContent="";try{await auth(m,$("lem").value.trim(),$("lpw").value);l.classList.remove("on");await pull();render();toast("Welcome")}catch(x){$("lerr").textContent=x.message}};
+ $("li").onclick=()=>go("signInWithPassword");$("lc").onclick=()=>go("signUp");$("lk").onclick=()=>{sv("gst",1);l.classList.remove("on")}}
+const shr=t=>{const u=location.href.split("#")[0];if(navigator.share)navigator.share({title:"Cheetah",text:"Watch "+t+" on Cheetah",url:u}).catch(()=>{});else{navigator.clipboard&&navigator.clipboard.writeText(u);toast("Link copied")}};
+const info=(t,b)=>{$("dt").innerHTML=`<button class="ib bk" id="bx">${ic('<path d="M15 18l-6-6 6-6"/>')}</button><div class="in" style="margin-top:0;padding-top:70px"><h1>${t}</h1><p class="o" style="margin-top:12px">${b}</p></div>`;show($("dt"));$("bx").onclick=()=>history.back()};
+const fsel=()=>{let L=[...new Set(items.map(x=>x.lang).filter(Boolean))],nm=c=>{try{return new Intl.DisplayNames(["en"],{type:"language"}).of(c)}catch{return c}};
+ return `<select id="lf"><option value="">All languages</option>${L.map(c=>`<option value="${c}"${lf===c?" selected":""}>${nm(c)}</option>`).join("")}</select> <select id="mr">${[0,6,7,8].map(v=>`<option value="${v}"${mr===v?" selected":""}>${v?v+"+ rating":"Any rating"}</option>`).join("")}</select>`};
+async function report(n,s,e,srv){if(!U)return toast("Sign in to report");try{await post("reports",{title:n.title,tmdbId:n.tmdbId,type:n.type,season:s,episode:e,server:srv,uid:U.uid});toast("Thanks, we will fix it")}catch(x){toast(x.message)}}
+async function chk(){try{const c=(await col("config")).find(x=>x.id==="app");if(!c)return;if(c.maintenance||+c.minVersion>APP_VER){const l=$("lg");l.innerHTML=`<div class="in" style="margin:0 auto;padding-top:25vh;text-align:center"><h1>${c.maintenance?"Under maintenance":"Update required"}</h1><p class="o" style="margin:12px 0">${esc(c.message||"")}</p>${!c.maintenance&&c.updateUrl?`<a class="pb" style="text-decoration:none;color:#fff" href="${esc(c.updateUrl)}">Update</a>`:""}</div>`;l.classList.add("on");l.style.zIndex=50}}catch{}}
+document.addEventListener("click",async e=>{const lc=e.target.closest("[data-lt]");if(lc){lt=lc.dataset.lt;render();return}const sa=e.target.closest("[data-sa]");if(sa){const v=sa.dataset.sa;tab="cat";so=v==="top"?"top":"new";type=v==="movie"||v==="tv"?v:"all";genre="";lf="";mr=0;scrollTo(0,0);render();return}const rc=e.target.closest("[data-rs]");if(rc){q=rc.dataset.rs;render();return}const b=e.target.closest("[data-ac]");if(!b)return;const a=b.dataset.ac;
+ if(a==="srv"){dsv=dsv==="vidlink"?"vidsrc":"vidlink";sv("srv",dsv);render();toast("Default server: "+SRV[dsv][0])}
+ else if(a==="in")loginUI();
+ else if(a==="out"){U=null;sv("u",null);sv("gst",0);render();loginUI()}
+ else if(a==="req"){if(!U)return toast("Sign in first");const t=(prompt("Which movie or series do you want?")||"").trim();if(t)try{await post("requests",{title:t,uid:U.uid,email:U.email});toast("Request sent")}catch(x){toast(x.message)}}
+ else if(a==="share")shr("movies");
+ else if(a==="rate"){RATE?open(RATE,"_blank"):toast("Rate link not set yet")}
+ else if(a==="privacy")info("Privacy policy","Cheetah stores your email and your saved list on your account only. We do not sell your data. Videos come from third-party sources and are not hosted by us.");
+ else if(a==="about")info("About","Cheetah v"+APP_VER+". Movie data and images by TMDB. This product uses the TMDB API but is not endorsed or certified by TMDB.");
+ else if(a==="clh"){cw=[];lastEp={};save();render();toast("History cleared")}
+ else if(a==="clc"){if(window.caches)(await caches.keys()).forEach(k=>caches.delete(k));toast("Cache cleared")}});
+setInterval(async()=>{try{const a=await col("notifications");a.sort((x,y)=>(y.createdAt?.seconds||0)-(x.createdAt?.seconds||0));const top=nots[0]?.createdAt?.seconds||0;if(a[0]&&(a[0].createdAt?.seconds||0)>top){nots=a;badge();toast("🔔 "+a[0].title)}}catch{}},90000);
+addEventListener("fullscreenchange",()=>{if(!document.fullscreenElement&&screen.orientation&&screen.orientation.unlock)screen.orientation.unlock()});
+const show=el=>{if(!el.classList.contains("on")){el.classList.add("on");history.pushState(1,"")}};
+addEventListener("popstate",()=>{const p=$("pl");if(p.classList.contains("on")){p.classList.remove("on");p.innerHTML=""}else $("dt").classList.remove("on")});
+setInterval(()=>{const h=$("hr");if(!h||feat.length<2||tab!=="home")return;hi=(hi+1)%feat.length;const f=feat[hi];h.style.backgroundImage="url('"+(f.backdrop||f.poster)+"')";h.dataset.k=K(f);$("hh").textContent=f.title},5000);
+$("mn").innerHTML='<div class="grid">'+'<div class="sk"></div>'.repeat(6)+'</div>';
+if(U)pull().then(render);else if(!ls("gst",0))loginUI();
+load();
+})();
+</script></body></html>
