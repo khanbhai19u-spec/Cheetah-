@@ -1,0 +1,4059 @@
+########## FILE: pubspec.yaml ##########
+name: cheetahapp
+description: Cheetah - movie and series app
+publish_to: none
+version: 1.0.0+1
+
+environment:
+  sdk: ">=3.3.0 <4.0.0"
+
+dependencies:
+  flutter:
+    sdk: flutter
+  firebase_core: ^3.6.0
+  firebase_auth: ^5.3.1
+  cloud_firestore: ^5.4.4
+  firebase_messaging: ^15.1.3
+  http: ^1.2.2
+  cached_network_image: ^3.4.1
+  webview_flutter: ^4.9.0
+  shared_preferences: ^2.3.2
+  url_launcher: ^6.3.0
+  android_intent_plus: ^5.2.0
+
+dev_dependencies:
+  flutter_launcher_icons: ^0.14.1
+
+flutter:
+  uses-material-design: true
+  assets:
+    - assets/icon.png
+
+flutter_launcher_icons:
+  android: true
+  ios: false
+  image_path: "assets/icon.png"
+
+########## FILE: .gitignore ##########
+build/
+.dart_tool/
+.flutter-plugins*
+.packages
+pubspec.lock
+android/
+functions/node_modules/
+
+########## FILE: .github/workflows/build.yml ##########
+name: Build Cheetah APK
+
+on:
+  push:
+    branches: [main, master]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+
+      # The repo only holds lib/, assets/ and pubspec.yaml.
+      # The Android project (package com.cheetahapp) is generated here.
+      - name: Generate Android project
+        run: |
+          cp -r lib /tmp/lib_bak
+          flutter create . --org com --project-name cheetahapp --platforms android
+          rm -rf lib && cp -r /tmp/lib_bak lib
+
+      - name: Patch Android config
+        run: |
+          sed -i 's/minSdk = flutter.minSdkVersion/minSdk = 23/; s/minSdkVersion flutter.minSdkVersion/minSdkVersion 23/' android/app/build.gradle* || true
+          M=android/app/src/main/AndroidManifest.xml
+          sed -i 's#<application#<uses-permission android:name="android.permission.INTERNET"/>\n    <uses-permission android:name="android.permission.POST_NOTIFICATIONS"/>\n    <application android:usesCleartextTraffic="true"#' $M
+          sed -i 's/android:label="[^"]*"/android:label="Cheetah"/' $M
+
+      - name: Make app icon from lib/logo_data.dart
+        run: |
+          mkdir -p assets
+          grep -o "'[A-Za-z0-9+/=]\{40,\}'" lib/logo_data.dart | tr -d "'" | base64 -d > assets/icon.png
+          ls -la assets
+          test -s assets/icon.png || (echo 'icon missing' && exit 1)
+
+      - run: flutter pub get
+
+      - name: App icon
+        run: dart run flutter_launcher_icons
+
+      - name: Build release APK
+        run: flutter build apk --release
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Cheetah-APK
+          path: build/app/outputs/flutter-apk/app-release.apk
+
+########## FILE: lib/main.dart ##########
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:firebase_core/firebase_core.dart';
+import 'package:flutter/material.dart';
+
+import 'auth.dart';
+import 'firebase_options.dart';
+import 'shell.dart';
+import 'theme.dart';
+
+Future<void> main() async {
+  WidgetsFlutterBinding.ensureInitialized();
+  await Firebase.initializeApp(options: DefaultFirebaseOptions.android);
+  runApp(const CheetahApp());
+}
+
+class CheetahApp extends StatelessWidget {
+  const CheetahApp({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return MaterialApp(
+      title: 'Cheetah',
+      debugShowCheckedModeBanner: false,
+      theme: ThemeData(
+        useMaterial3: true,
+        splashFactory: InkSparkle.splashFactory,
+        progressIndicatorTheme: const ProgressIndicatorThemeData(color: kRed),
+        snackBarTheme: SnackBarThemeData(
+          behavior: SnackBarBehavior.floating,
+          backgroundColor: kCard2,
+          contentTextStyle: const TextStyle(color: Colors.white, fontSize: 14, fontWeight: FontWeight.w600),
+          insetPadding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        ),
+        brightness: Brightness.dark,
+        scaffoldBackgroundColor: kBg,
+        colorScheme: const ColorScheme.dark(primary: kRed, surface: kCard),
+        appBarTheme: const AppBarTheme(backgroundColor: kBg, elevation: 0),
+        navigationBarTheme: NavigationBarThemeData(
+          backgroundColor: const Color(0xFF111115),
+          indicatorColor: kRed.withOpacity(0.25),
+        ),
+      ),
+      home: StreamBuilder<User?>(
+        stream: FirebaseAuth.instance.authStateChanges(),
+        builder: (context, snap) {
+          if (snap.connectionState == ConnectionState.waiting) return const Splash();
+          final u = snap.data;
+          if (u == null) return const AuthScreen();
+          return Boot(key: ValueKey(u.uid));
+        },
+      ),
+    );
+  }
+}
+
+########## FILE: lib/firebase_options.dart ##########
+import 'package:firebase_core/firebase_core.dart';
+
+class DefaultFirebaseOptions {
+  static const FirebaseOptions android = FirebaseOptions(
+    apiKey: 'AIzaSyBoQCeWAHWtbjdIY9zpJXL0wHVQZJfI5BA',
+    appId: '1:876419660977:android:6937e443e0179e4a44b690',
+    messagingSenderId: '876419660977',
+    projectId: 'cheetah-70c03',
+    storageBucket: 'cheetah-70c03.firebasestorage.app',
+  );
+}
+
+########## FILE: lib/theme.dart ##########
+import 'package:flutter/material.dart';
+
+const kRed = Color(0xFFE5172B);
+const kRedLight = Color(0xFFFF4458);
+const kRedDark = Color(0xFF9B0F1D);
+const kBg = Color(0xFF0A0A0D);
+const kCard = Color(0xFF17171C);
+const kCard2 = Color(0xFF22222B);
+
+const kRedGradient = LinearGradient(
+  begin: Alignment.topLeft,
+  end: Alignment.bottomRight,
+  colors: [kRedLight, kRed, kRedDark],
+);
+
+########## FILE: lib/store.dart ##########
+import 'dart:async';
+import 'dart:convert';
+
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:flutter/foundation.dart';
+import 'package:http/http.dart' as http;
+
+typedef Item = Map<String, dynamic>;
+
+final db = FirebaseFirestore.instance;
+
+/// TMDB / OMDB access. Keys are stored in Firestore (config/api) and set
+/// from the admin panel, so they never live in the source code.
+class Api {
+  static String tmdbKey = '';
+  static String omdbKey = '';
+
+  static Future<void> load() async {
+    try {
+      final d = await db.collection('config').doc('api').get();
+      final m = d.data() ?? {};
+      tmdbKey = '${m['tmdbKey'] ?? ''}'.trim();
+      omdbKey = '${m['omdbKey'] ?? ''}'.trim();
+    } catch (_) {}
+  }
+
+  static Future<Map<String, dynamic>?> tmdb(String path,
+      [Map<String, String> q = const {}]) async {
+    if (tmdbKey.isEmpty) return null;
+    try {
+      final uri =
+          Uri.https('api.themoviedb.org', '/3/$path', {'api_key': tmdbKey, ...q});
+      final r = await http.get(uri).timeout(const Duration(seconds: 15));
+      if (r.statusCode == 200) {
+        return Map<String, dynamic>.from(jsonDecode(r.body) as Map);
+      }
+    } catch (_) {}
+    return null;
+  }
+
+  static Future<Map<String, dynamic>?> omdb(String imdbId) async {
+    if (omdbKey.isEmpty || imdbId.isEmpty) return null;
+    try {
+      final uri = Uri.https('www.omdbapi.com', '/', {'apikey': omdbKey, 'i': imdbId});
+      final r = await http.get(uri).timeout(const Duration(seconds: 15));
+      if (r.statusCode == 200) {
+        final j = Map<String, dynamic>.from(jsonDecode(r.body) as Map);
+        if (j['Response'] == 'True') return j;
+      }
+    } catch (_) {}
+    return null;
+  }
+}
+
+class _Col {
+  final String name;
+  final ValueNotifier<List<Item>> notifier;
+  final int Function(Item, Item) cmp;
+  _Col(this.name, this.notifier, this.cmp);
+}
+
+/// Live copies of the Firestore collections the app needs.
+class Store {
+  static final content = ValueNotifier<List<Item>>([]);
+  static final slides = ValueNotifier<List<Item>>([]);
+  static final ads = ValueNotifier<List<Item>>([]);
+  static final servers = ValueNotifier<List<Item>>([]);
+  static final popups = ValueNotifier<List<Item>>([]);
+  static final notifs = ValueNotifier<List<Item>>([]);
+
+  /// false until the first batch of content arrives (drives the skeletons).
+  static final ready = ValueNotifier<bool>(false);
+
+  static final List<StreamSubscription> _subs = [];
+
+  static int _ts(Item m) {
+    final t = m['createdAt'];
+    return t is Timestamp ? t.millisecondsSinceEpoch : 0;
+  }
+
+  static num _n(dynamic v) => v is num ? v : 0;
+
+  static int _newest(Item a, Item b) => _ts(b).compareTo(_ts(a));
+
+  static int _byOrder(Item a, Item b) => _n(a['order']).compareTo(_n(b['order']));
+
+  static final List<_Col> _cols = [
+    _Col('content', content, _newest),
+    _Col('slides', slides, _byOrder),
+    _Col('ads', ads, _newest),
+    _Col('servers', servers, _byOrder),
+    _Col('popups', popups, _newest),
+    _Col('notifications', notifs, _newest),
+  ];
+
+  static List<Item> _read(QuerySnapshot<Map<String, dynamic>> s, int Function(Item, Item) cmp) {
+    final l = s.docs.map((d) => <String, dynamic>{...d.data(), 'id': d.id}).toList();
+    l.sort(cmp);
+    return l;
+  }
+
+  static void start() {
+    if (_subs.isNotEmpty) return;
+    for (final c in _cols) {
+      _subs.add(db.collection(c.name).snapshots().listen((s) {
+        c.notifier.value = _read(s, c.cmp);
+        if (c.name == 'content') ready.value = true;
+      }, onError: (_) {
+        if (c.name == 'content') ready.value = true;
+      }));
+    }
+  }
+
+  static void stop() {
+    for (final s in _subs) {
+      s.cancel();
+    }
+    _subs.clear();
+    ready.value = false;
+  }
+
+  static Future<bool> _fetch(_Col c) async {
+    try {
+      final s = await db
+          .collection(c.name)
+          .get(const GetOptions(source: Source.server))
+          .timeout(const Duration(seconds: 15));
+      c.notifier.value = _read(s, c.cmp);
+      if (c.name == 'content') ready.value = true;
+      return true;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  /// Pull-to-refresh: re-reads every collection straight from the server and
+  /// reloads the API keys. Returns false if the server could not be reached.
+  static Future<bool> refresh() async {
+    final r = await Future.wait<bool>([
+      for (final c in _cols) _fetch(c),
+      Api.load().then((_) => true),
+    ]);
+    return r.every((e) => e);
+  }
+}
+
+########## FILE: lib/widgets.dart ##########
+import 'package:cached_network_image/cached_network_image.dart';
+import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+import 'package:url_launcher/url_launcher.dart';
+
+import 'detail.dart';
+import 'store.dart';
+import 'theme.dart';
+
+Future<void> openLink(String url) async {
+  if (url.trim().isEmpty) return;
+  try {
+    final u = Uri.tryParse(url.trim());
+    if (u != null) await launchUrl(u, mode: LaunchMode.externalApplication);
+  } catch (_) {}
+}
+
+void openItem(BuildContext c, Item it) => Navigator.push(
+      c,
+      PageRouteBuilder(
+        transitionDuration: const Duration(milliseconds: 280),
+        reverseTransitionDuration: const Duration(milliseconds: 220),
+        pageBuilder: (_, __, ___) => DetailScreen(item: it),
+        transitionsBuilder: (_, a, __, child) => FadeTransition(
+          opacity: CurvedAnimation(parent: a, curve: Curves.easeOut),
+          child: SlideTransition(
+            position: Tween(begin: const Offset(0, 0.04), end: Offset.zero)
+                .animate(CurvedAnimation(parent: a, curve: Curves.easeOutCubic)),
+            child: child,
+          ),
+        ),
+      ),
+    );
+
+// ───────────────────────── Pull to refresh ─────────────────────────
+
+/// Wrap any scrollable (with AlwaysScrollableScrollPhysics) to get
+/// pull-to-refresh that re-reads everything from the server.
+class Pull extends StatelessWidget {
+  final Widget child;
+  const Pull({super.key, required this.child});
+
+  Future<void> _go(BuildContext c) async {
+    HapticFeedback.lightImpact();
+    final ok = await Store.refresh();
+    if (!c.mounted) return;
+    final m = ScaffoldMessenger.of(c);
+    m.hideCurrentSnackBar();
+    m.showSnackBar(SnackBar(
+      behavior: SnackBarBehavior.floating,
+      duration: const Duration(seconds: 2),
+      backgroundColor: kCard2,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+      content: Row(children: [
+        Icon(ok ? Icons.check_circle_rounded : Icons.wifi_off_rounded,
+            size: 18, color: ok ? Colors.greenAccent : Colors.orangeAccent),
+        const SizedBox(width: 10),
+        Text(ok ? 'Up to date' : 'Couldn\'t reach the server'),
+      ]),
+    ));
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return RefreshIndicator(
+      color: kRed,
+      backgroundColor: kCard2,
+      displacement: 48,
+      onRefresh: () => _go(context),
+      child: child,
+    );
+  }
+}
+
+// ───────────────────────── Images ─────────────────────────
+
+class Img extends StatelessWidget {
+  final String? url;
+  final BoxFit fit;
+  const Img(this.url, {super.key, this.fit = BoxFit.cover});
+
+  @override
+  Widget build(BuildContext context) {
+    if (url == null || url!.isEmpty) {
+      return Container(color: kCard, child: const Icon(Icons.movie_outlined, color: Colors.white24));
+    }
+    return CachedNetworkImage(
+      imageUrl: url!,
+      fit: fit,
+      fadeInDuration: const Duration(milliseconds: 250),
+      placeholder: (_, __) => Container(color: kCard),
+      errorWidget: (_, __, ___) => Container(
+        color: kCard,
+        child: const Icon(Icons.broken_image_outlined, color: Colors.white24),
+      ),
+    );
+  }
+}
+
+// ───────────────────────── Skeleton loading ─────────────────────────
+
+class Skeleton extends StatefulWidget {
+  final double? width;
+  final double height;
+  final double radius;
+  const Skeleton({super.key, this.width, required this.height, this.radius = 12});
+
+  @override
+  State<Skeleton> createState() => _SkeletonState();
+}
+
+class _SkeletonState extends State<Skeleton> with SingleTickerProviderStateMixin {
+  late final AnimationController _c =
+      AnimationController(vsync: this, duration: const Duration(milliseconds: 1300))..repeat();
+
+  @override
+  void dispose() {
+    _c.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AnimatedBuilder(
+      animation: _c,
+      builder: (_, __) {
+        final t = _c.value;
+        return Container(
+          width: widget.width,
+          height: widget.height,
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(widget.radius),
+            gradient: LinearGradient(
+              begin: Alignment(-1.5 + 3 * t, 0),
+              end: Alignment(-0.5 + 3 * t, 0),
+              colors: const [kCard, kCard2, kCard],
+            ),
+          ),
+        );
+      },
+    );
+  }
+}
+
+class HomeSkeleton extends StatelessWidget {
+  const HomeSkeleton({super.key});
+
+  Widget _row() => Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Padding(
+            padding: EdgeInsets.fromLTRB(16, 22, 16, 12),
+            child: Skeleton(width: 120, height: 18, radius: 6),
+          ),
+          SizedBox(
+            height: 190,
+            child: ListView.separated(
+              physics: const NeverScrollableScrollPhysics(),
+              scrollDirection: Axis.horizontal,
+              padding: const EdgeInsets.symmetric(horizontal: 16),
+              itemCount: 4,
+              separatorBuilder: (_, __) => const SizedBox(width: 12),
+              itemBuilder: (_, __) => const Skeleton(width: 110, height: 165),
+            ),
+          ),
+        ],
+      );
+
+  @override
+  Widget build(BuildContext context) {
+    return ListView(
+      physics: const NeverScrollableScrollPhysics(),
+      children: [
+        const Padding(
+          padding: EdgeInsets.fromLTRB(16, 10, 16, 14),
+          child: Row(children: [
+            Skeleton(width: 40, height: 40, radius: 12),
+            SizedBox(width: 12),
+            Skeleton(width: 130, height: 18, radius: 6),
+          ]),
+        ),
+        const Padding(
+          padding: EdgeInsets.symmetric(horizontal: 16),
+          child: Skeleton(height: 210, radius: 22),
+        ),
+        _row(),
+        _row(),
+      ],
+    );
+  }
+}
+
+// ───────────────────────── Cards & grids ─────────────────────────
+
+class PosterCard extends StatefulWidget {
+  final Item item;
+  final double? width;
+  const PosterCard({super.key, required this.item, this.width});
+
+  @override
+  State<PosterCard> createState() => _PosterCardState();
+}
+
+class _PosterCardState extends State<PosterCard> {
+  bool _down = false;
+
+  void _set(bool v) {
+    if (mounted && _down != v) setState(() => _down = v);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final item = widget.item;
+    final r = item['rating'] is num ? (item['rating'] as num).toDouble() : 0.0;
+    final year = '${item['year'] ?? ''}';
+    final isTv = item['type'] == 'tv';
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTapDown: (_) => _set(true),
+      onTapUp: (_) => _set(false),
+      onTapCancel: () => _set(false),
+      onTap: () => openItem(context, item),
+      child: AnimatedScale(
+        scale: _down ? 0.95 : 1,
+        duration: const Duration(milliseconds: 120),
+        curve: Curves.easeOut,
+        child: SizedBox(
+          width: widget.width,
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              AspectRatio(
+                aspectRatio: 2 / 3,
+                child: Container(
+                  decoration: BoxDecoration(
+                    borderRadius: BorderRadius.circular(14),
+                    border: Border.all(color: Colors.white10),
+                    boxShadow: const [BoxShadow(color: Colors.black54, blurRadius: 10, offset: Offset(0, 4))],
+                  ),
+                  child: ClipRRect(
+                    borderRadius: BorderRadius.circular(13),
+                    child: Stack(
+                      fit: StackFit.expand,
+                      children: [
+                        Img(item['poster']?.toString()),
+                        const DecoratedBox(
+                          decoration: BoxDecoration(
+                            gradient: LinearGradient(
+                              begin: Alignment.topCenter,
+                              end: Alignment.bottomCenter,
+                              colors: [Colors.transparent, Color(0x99000000)],
+                              stops: [0.65, 1],
+                            ),
+                          ),
+                        ),
+                        if (r > 0)
+                          Positioned(
+                            top: 6,
+                            right: 6,
+                            child: Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 3),
+                              decoration: BoxDecoration(
+                                color: Colors.black.withOpacity(0.65),
+                                borderRadius: BorderRadius.circular(8),
+                              ),
+                              child: Row(mainAxisSize: MainAxisSize.min, children: [
+                                const Icon(Icons.star_rounded, size: 12, color: Colors.amber),
+                                const SizedBox(width: 2),
+                                Text(r.toStringAsFixed(1),
+                                    style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w700)),
+                              ]),
+                            ),
+                          ),
+                        if (isTv)
+                          Positioned(
+                            left: 6,
+                            bottom: 6,
+                            child: Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                              decoration: BoxDecoration(
+                                gradient: kRedGradient,
+                                borderRadius: BorderRadius.circular(6),
+                              ),
+                              child: const Text('SERIES',
+                                  style: TextStyle(fontSize: 9, fontWeight: FontWeight.w800, letterSpacing: 0.6)),
+                            ),
+                          ),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 8),
+              Text(
+                '${item['title'] ?? ''}',
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.w600),
+              ),
+              if (year.isNotEmpty)
+                Text(year, style: const TextStyle(fontSize: 11, color: Colors.white38)),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+const kGridDelegate = SliverGridDelegateWithFixedCrossAxisCount(
+  crossAxisCount: 3,
+  mainAxisSpacing: 14,
+  crossAxisSpacing: 10,
+  childAspectRatio: 0.5,
+);
+
+class _FadeIn extends StatelessWidget {
+  final int index;
+  final Widget child;
+  const _FadeIn({required this.index, required this.child});
+
+  @override
+  Widget build(BuildContext context) {
+    return TweenAnimationBuilder<double>(
+      tween: Tween(begin: 0, end: 1),
+      duration: Duration(milliseconds: 280 + (index % 9) * 45),
+      curve: Curves.easeOutCubic,
+      builder: (_, v, c) => Opacity(
+        opacity: v,
+        child: Transform.translate(offset: Offset(0, 14 * (1 - v)), child: c),
+      ),
+      child: child,
+    );
+  }
+}
+
+SliverGrid posterSliver(List<Item> items) {
+  return SliverGrid(
+    gridDelegate: kGridDelegate,
+    delegate: SliverChildBuilderDelegate(
+      (_, i) => _FadeIn(index: i, child: PosterCard(item: items[i])),
+      childCount: items.length,
+    ),
+  );
+}
+
+Widget posterGrid(List<Item> items) {
+  return GridView.builder(
+    physics: const AlwaysScrollableScrollPhysics(),
+    keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
+    padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
+    gridDelegate: kGridDelegate,
+    itemCount: items.length,
+    itemBuilder: (_, i) => _FadeIn(index: i, child: PosterCard(item: items[i])),
+  );
+}
+
+class EmptyState extends StatelessWidget {
+  final IconData icon;
+  final String title;
+  final String? subtitle;
+  const EmptyState({super.key, required this.icon, required this.title, this.subtitle});
+
+  @override
+  Widget build(BuildContext context) {
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(32),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Container(
+              width: 76,
+              height: 76,
+              decoration: const BoxDecoration(color: kCard, shape: BoxShape.circle),
+              child: Icon(icon, size: 34, color: Colors.white38),
+            ),
+            const SizedBox(height: 16),
+            Text(title, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w700)),
+            if (subtitle != null) ...[
+              const SizedBox(height: 6),
+              Text(subtitle!, textAlign: TextAlign.center, style: const TextStyle(color: Colors.white54)),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// Keeps the screen pull-to-refresh-able even when there is nothing to show.
+Widget emptyScrollable(Widget child) => Pull(
+      child: LayoutBuilder(
+        builder: (_, box) => ListView(
+          physics: const AlwaysScrollableScrollPhysics(),
+          children: [SizedBox(height: box.maxHeight, child: child)],
+        ),
+      ),
+    );
+
+// ───────────────────────── Buttons & headers ─────────────────────────
+
+class GradientButton extends StatelessWidget {
+  final IconData icon;
+  final String label;
+  final VoidCallback onTap;
+  final double height;
+  const GradientButton({
+    super.key,
+    required this.icon,
+    required this.label,
+    required this.onTap,
+    this.height = 50,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: Colors.transparent,
+      child: Ink(
+        height: height,
+        decoration: BoxDecoration(
+          gradient: kRedGradient,
+          borderRadius: BorderRadius.circular(16),
+          boxShadow: [BoxShadow(color: kRed.withOpacity(0.35), blurRadius: 16, offset: const Offset(0, 6))],
+        ),
+        child: InkWell(
+          borderRadius: BorderRadius.circular(16),
+          onTap: onTap,
+          child: Center(
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(icon, size: 24),
+                const SizedBox(width: 6),
+                Text(label, style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w800)),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+Widget sectionHeader(String title, {VoidCallback? onMore}) => Padding(
+      padding: const EdgeInsets.fromLTRB(16, 22, 8, 10),
+      child: Row(
+        children: [
+          Container(
+            width: 4,
+            height: 18,
+            decoration: BoxDecoration(gradient: kRedGradient, borderRadius: BorderRadius.circular(2)),
+          ),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Text(title, style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w800)),
+          ),
+          if (onMore != null)
+            TextButton(
+              onPressed: onMore,
+              style: TextButton.styleFrom(foregroundColor: Colors.white60, visualDensity: VisualDensity.compact),
+              child: const Row(mainAxisSize: MainAxisSize.min, children: [
+                Text('See all', style: TextStyle(fontSize: 12.5)),
+                Icon(Icons.chevron_right_rounded, size: 18),
+              ]),
+            ),
+        ],
+      ),
+    );
+
+Widget hRow(BuildContext c, String title, List<Item> items) {
+  if (items.isEmpty) return const SizedBox.shrink();
+  return Column(
+    crossAxisAlignment: CrossAxisAlignment.start,
+    children: [
+      sectionHeader(title,
+          onMore: items.length > 3
+              ? () => Navigator.push(c, MaterialPageRoute(builder: (_) => SeeAllScreen(title: title, items: items)))
+              : null),
+      SizedBox(
+        height: 232,
+        child: ListView.separated(
+          scrollDirection: Axis.horizontal,
+          physics: const BouncingScrollPhysics(),
+          padding: const EdgeInsets.symmetric(horizontal: 16),
+          itemCount: items.length,
+          separatorBuilder: (_, __) => const SizedBox(width: 12),
+          itemBuilder: (_, i) => PosterCard(item: items[i], width: 110),
+        ),
+      ),
+    ],
+  );
+}
+
+class SeeAllScreen extends StatelessWidget {
+  final String title;
+  final List<Item> items;
+  const SeeAllScreen({super.key, required this.title, required this.items});
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(title: Text(title, style: const TextStyle(fontWeight: FontWeight.w800))),
+      body: Pull(child: posterGrid(items)),
+    );
+  }
+}
+
+/// Banner ads managed from the admin panel.
+class AdBanner extends StatelessWidget {
+  final String placement;
+  const AdBanner(this.placement, {super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return ValueListenableBuilder<List<Item>>(
+      valueListenable: Store.ads,
+      builder: (_, ads, __) {
+        final l = ads
+            .where((a) => a['active'] != false && '${a['placement'] ?? 'home'}' == placement)
+            .toList();
+        if (l.isEmpty) return const SizedBox.shrink();
+        return Column(
+          children: [
+            for (final a in l)
+              Padding(
+                padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
+                child: GestureDetector(
+                  onTap: () => openLink('${a['link'] ?? ''}'),
+                  child: ClipRRect(
+                    borderRadius: BorderRadius.circular(14),
+                    child: Stack(
+                      children: [
+                        AspectRatio(aspectRatio: 16 / 5, child: Img(a['image']?.toString())),
+                        Positioned(
+                          top: 6,
+                          left: 6,
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1),
+                            decoration: BoxDecoration(
+                              color: Colors.black54,
+                              borderRadius: BorderRadius.circular(4),
+                            ),
+                            child: const Text('Ad', style: TextStyle(fontSize: 10)),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+          ],
+        );
+      },
+    );
+  }
+}
+
+########## FILE: lib/auth.dart ##########
+import 'dart:math' as math;
+import 'dart:ui';
+
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:flutter/material.dart';
+
+import 'logo_data.dart';
+import 'store.dart';
+import 'theme.dart';
+
+class AuthScreen extends StatefulWidget {
+  const AuthScreen({super.key});
+
+  @override
+  State<AuthScreen> createState() => _AuthScreenState();
+}
+
+class _AuthScreenState extends State<AuthScreen> with TickerProviderStateMixin {
+  bool login = true;
+  bool busy = false;
+  bool hide = true;
+  String? err;
+  final name = TextEditingController();
+  final email = TextEditingController();
+  final pass = TextEditingController();
+
+  late final AnimationController _bg =
+      AnimationController(vsync: this, duration: const Duration(seconds: 14))..repeat();
+  late final AnimationController _enter =
+      AnimationController(vsync: this, duration: const Duration(milliseconds: 1100))..forward();
+  late final AnimationController _shine =
+      AnimationController(vsync: this, duration: const Duration(milliseconds: 2400))..repeat();
+
+  @override
+  void dispose() {
+    _bg.dispose();
+    _enter.dispose();
+    _shine.dispose();
+    name.dispose();
+    email.dispose();
+    pass.dispose();
+    super.dispose();
+  }
+
+  String _msg(FirebaseAuthException e) {
+    switch (e.code) {
+      case 'invalid-email':
+        return 'Please enter a valid email address.';
+      case 'user-not-found':
+      case 'wrong-password':
+      case 'invalid-credential':
+        return 'Incorrect email or password.';
+      case 'email-already-in-use':
+        return 'An account with this email already exists.';
+      case 'weak-password':
+        return 'Password must be at least 6 characters.';
+      case 'network-request-failed':
+        return 'No internet connection.';
+      case 'too-many-requests':
+        return 'Too many attempts. Try again later.';
+      default:
+        return e.message ?? 'Something went wrong.';
+    }
+  }
+
+  Future<void> submit() async {
+    FocusScope.of(context).unfocus();
+    setState(() {
+      busy = true;
+      err = null;
+    });
+    try {
+      final auth = FirebaseAuth.instance;
+      if (login) {
+        await auth.signInWithEmailAndPassword(email: email.text.trim(), password: pass.text);
+      } else {
+        if (name.text.trim().isEmpty) {
+          throw FirebaseAuthException(code: 'custom', message: 'Please enter your name.');
+        }
+        final cr = await auth.createUserWithEmailAndPassword(
+            email: email.text.trim(), password: pass.text);
+        await cr.user?.updateDisplayName(name.text.trim());
+        try {
+          await db.collection('users').doc(cr.user!.uid).set({
+            'name': name.text.trim(),
+            'email': email.text.trim(),
+            'createdAt': FieldValue.serverTimestamp(),
+          });
+        } catch (_) {}
+      }
+    } on FirebaseAuthException catch (e) {
+      err = _msg(e);
+    } catch (e) {
+      err = 'Something went wrong. Try again.';
+    }
+    if (mounted) setState(() => busy = false);
+  }
+
+  /// Staggered fade + slide-up for each block of the page.
+  Widget _stagger(int i, Widget child) {
+    final a = CurvedAnimation(
+      parent: _enter,
+      curve: Interval((0.08 * i).clamp(0.0, 0.7), (0.45 + 0.08 * i).clamp(0.2, 1.0), curve: Curves.easeOutCubic),
+    );
+    return AnimatedBuilder(
+      animation: a,
+      builder: (_, c) => Opacity(
+        opacity: a.value,
+        child: Transform.translate(offset: Offset(0, 28 * (1 - a.value)), child: c),
+      ),
+      child: child,
+    );
+  }
+
+  Widget _blob(double t, double phase, Color c, double size, Alignment base) {
+    final a = t * 2 * math.pi + phase;
+    return Align(
+      alignment: Alignment(base.x + 0.35 * math.sin(a), base.y + 0.25 * math.cos(a * 0.9)),
+      child: Container(
+        width: size,
+        height: size,
+        decoration: BoxDecoration(
+          shape: BoxShape.circle,
+          gradient: RadialGradient(colors: [c.withOpacity(0.55), c.withOpacity(0)]),
+        ),
+      ),
+    );
+  }
+
+  Widget _background() {
+    return AnimatedBuilder(
+      animation: _bg,
+      builder: (_, __) => Stack(
+        fit: StackFit.expand,
+        children: [
+          const ColoredBox(color: kBg),
+          _blob(_bg.value, 0, const Color(0xFFFF7A00), 380, const Alignment(-0.9, -0.8)),
+          _blob(_bg.value, 2.1, const Color(0xFF00B0FF), 360, const Alignment(0.95, -0.2)),
+          _blob(_bg.value, 4.2, kRed, 420, const Alignment(-0.3, 0.95)),
+        ],
+      ),
+    );
+  }
+
+  /// Liquid-glass surface: blur + light gradient + bright edge highlight.
+  Widget _glass({required Widget child, double radius = 28, EdgeInsets? padding, double blur = 22}) {
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(radius),
+      child: BackdropFilter(
+        filter: ImageFilter.blur(sigmaX: blur, sigmaY: blur),
+        child: Container(
+          padding: padding,
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(radius),
+            gradient: LinearGradient(
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+              colors: [Colors.white.withOpacity(0.20), Colors.white.withOpacity(0.05)],
+            ),
+            border: Border.all(color: Colors.white.withOpacity(0.28), width: 1.2),
+            boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.35), blurRadius: 30, offset: const Offset(0, 14))],
+          ),
+          child: child,
+        ),
+      ),
+    );
+  }
+
+  Widget _field(TextEditingController c, String label, IconData icon,
+      {TextInputType? type, bool obscure = false, Widget? suffix}) {
+    return _glass(
+      radius: 18,
+      blur: 12,
+      child: TextField(
+        controller: c,
+        keyboardType: type,
+        obscureText: obscure,
+        cursorColor: Colors.white,
+        style: const TextStyle(fontSize: 16),
+        decoration: InputDecoration(
+          hintText: label,
+          hintStyle: const TextStyle(color: Colors.white54),
+          prefixIcon: Icon(icon, color: Colors.white70),
+          suffixIcon: suffix,
+          border: InputBorder.none,
+          contentPadding: const EdgeInsets.symmetric(vertical: 18),
+        ),
+      ),
+    );
+  }
+
+  Widget _button() {
+    return GestureDetector(
+      onTap: busy ? null : submit,
+      child: AnimatedBuilder(
+        animation: _shine,
+        builder: (_, __) => Container(
+          height: 56,
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(18),
+            gradient: kRedGradient,
+            boxShadow: [BoxShadow(color: kRed.withOpacity(0.55), blurRadius: 24, offset: const Offset(0, 8))],
+          ),
+          child: ClipRRect(
+            borderRadius: BorderRadius.circular(18),
+            child: Stack(
+              alignment: Alignment.center,
+              children: [
+                // moving light sweep
+                Positioned.fill(
+                  child: FractionallySizedBox(
+                    alignment: Alignment(-1.6 + 3.2 * _shine.value, 0),
+                    widthFactor: 0.35,
+                    child: Transform(
+                      transform: Matrix4.skewX(-0.4),
+                      child: DecoratedBox(
+                        decoration: BoxDecoration(
+                          gradient: LinearGradient(colors: [
+                            Colors.white.withOpacity(0),
+                            Colors.white.withOpacity(0.28),
+                            Colors.white.withOpacity(0),
+                          ]),
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+                AnimatedSwitcher(
+                  duration: const Duration(milliseconds: 250),
+                  child: busy
+                      ? const SizedBox(
+                          key: ValueKey('b'),
+                          width: 24,
+                          height: 24,
+                          child: CircularProgressIndicator(strokeWidth: 2.6, color: Colors.white))
+                      : Text(login ? 'Log in' : 'Sign up',
+                          key: ValueKey(login),
+                          style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w800, color: Colors.white)),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      resizeToAvoidBottomInset: true,
+      body: Stack(
+        fit: StackFit.expand,
+        children: [
+          _background(),
+          SafeArea(
+            child: Center(
+              child: SingleChildScrollView(
+                padding: const EdgeInsets.all(24),
+                child: ConstrainedBox(
+                  constraints: const BoxConstraints(maxWidth: 420),
+                  child: Column(
+                    children: [
+                      _stagger(
+                        0,
+                        AnimatedBuilder(
+                          animation: _bg,
+                          builder: (_, c) => Transform.translate(
+                            offset: Offset(0, 6 * math.sin(_bg.value * 2 * math.pi * 3)),
+                            child: c,
+                          ),
+                          child: Container(
+                            decoration: BoxDecoration(
+                              borderRadius: BorderRadius.circular(30),
+                              boxShadow: [BoxShadow(color: const Color(0xFFFF7A00).withOpacity(0.45), blurRadius: 40)],
+                            ),
+                            child: const Logo(size: 104, radius: 30),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(height: 16),
+                      _stagger(
+                        1,
+                        const Text('Cheetah',
+                            style: TextStyle(fontSize: 34, fontWeight: FontWeight.w900, letterSpacing: 0.8)),
+                      ),
+                      const SizedBox(height: 4),
+                      _stagger(
+                        2,
+                        AnimatedSwitcher(
+                          duration: const Duration(milliseconds: 300),
+                          child: Text(login ? 'Welcome back' : 'Create your account',
+                              key: ValueKey(login), style: const TextStyle(color: Colors.white60, fontSize: 15)),
+                        ),
+                      ),
+                      const SizedBox(height: 26),
+                      _stagger(
+                        3,
+                        _glass(
+                          padding: const EdgeInsets.all(18),
+                          child: AnimatedSize(
+                            duration: const Duration(milliseconds: 350),
+                            curve: Curves.easeOutCubic,
+                            alignment: Alignment.topCenter,
+                            child: Column(
+                              children: [
+                                if (!login) ...[
+                                  _field(name, 'Full name', Icons.person_outline_rounded),
+                                  const SizedBox(height: 12),
+                                ],
+                                _field(email, 'Email', Icons.mail_outline_rounded, type: TextInputType.emailAddress),
+                                const SizedBox(height: 12),
+                                _field(
+                                  pass,
+                                  'Password',
+                                  Icons.lock_outline_rounded,
+                                  obscure: hide,
+                                  suffix: IconButton(
+                                    icon: Icon(
+                                        hide ? Icons.visibility_off_outlined : Icons.visibility_outlined,
+                                        color: Colors.white70),
+                                    onPressed: () => setState(() => hide = !hide),
+                                  ),
+                                ),
+                                AnimatedSwitcher(
+                                  duration: const Duration(milliseconds: 250),
+                                  child: err == null
+                                      ? const SizedBox(key: ValueKey('n'), height: 0)
+                                      : Padding(
+                                          key: ValueKey(err),
+                                          padding: const EdgeInsets.only(top: 12),
+                                          child: Text(err!,
+                                              textAlign: TextAlign.center,
+                                              style: const TextStyle(color: Color(0xFFFF8A95))),
+                                        ),
+                                ),
+                                const SizedBox(height: 18),
+                                _button(),
+                              ],
+                            ),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(height: 14),
+                      _stagger(
+                        4,
+                        TextButton(
+                          onPressed: () => setState(() {
+                            login = !login;
+                            err = null;
+                          }),
+                          child: AnimatedSwitcher(
+                            duration: const Duration(milliseconds: 250),
+                            child: Text(
+                              login ? "Don't have an account? Sign up" : 'Already have an account? Log in',
+                              key: ValueKey(login),
+                              style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w600),
+                            ),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+########## FILE: lib/shell.dart ##########
+import 'package:firebase_messaging/firebase_messaging.dart';
+import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+
+import 'browse.dart';
+import 'home.dart';
+import 'profile.dart';
+import 'store.dart';
+import 'logo_data.dart';
+import 'theme.dart';
+import 'userdata.dart';
+import 'widgets.dart';
+
+class Splash extends StatelessWidget {
+  const Splash({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      body: Center(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            ClipRRect(
+              borderRadius: BorderRadius.circular(24),
+              child: Image.memory(kLogoBytes, width: 96, height: 96),
+            ),
+            const SizedBox(height: 24),
+            const SizedBox(width: 24, height: 24, child: CircularProgressIndicator(strokeWidth: 2.5)),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// Runs after login: starts live data listeners, loads API keys, sets up push.
+class Boot extends StatefulWidget {
+  const Boot({super.key});
+
+  @override
+  State<Boot> createState() => _BootState();
+}
+
+class _BootState extends State<Boot> {
+  late final Future<void> _f = _init();
+
+  Future<void> _init() async {
+    Store.start();
+    UserData.start();
+    await Api.load();
+    try {
+      final m = FirebaseMessaging.instance;
+      await m.requestPermission();
+      await m.subscribeToTopic('all');
+    } catch (_) {}
+  }
+
+  @override
+  void dispose() {
+    Store.stop();
+    UserData.stop();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return FutureBuilder<void>(
+      future: _f,
+      builder: (_, s) => s.connectionState == ConnectionState.done ? const Shell() : const Splash(),
+    );
+  }
+}
+
+class Shell extends StatefulWidget {
+  const Shell({super.key});
+
+  @override
+  State<Shell> createState() => _ShellState();
+}
+
+class _ShellState extends State<Shell> {
+  int tab = 0;
+  bool _popupDone = false;
+
+  @override
+  void initState() {
+    super.initState();
+    Store.popups.addListener(_checkPopup);
+    WidgetsBinding.instance.addPostFrameCallback((_) => _checkPopup());
+  }
+
+  @override
+  void dispose() {
+    Store.popups.removeListener(_checkPopup);
+    super.dispose();
+  }
+
+  Future<void> _checkPopup() async {
+    if (_popupDone || !mounted) return;
+    final list = Store.popups.value.where((p) => p['active'] == true).toList();
+    if (list.isEmpty) return;
+    _popupDone = true;
+    final p = list.first;
+    final always = p['showAlways'] == true;
+    final sp = await SharedPreferences.getInstance();
+    final seen = sp.getStringList('seen_popups') ?? <String>[];
+    if (!always && seen.contains('${p['id']}')) return;
+    if (!mounted) return;
+    await showDialog(
+      context: context,
+      builder: (ctx) => Dialog(
+        backgroundColor: kCard,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        clipBehavior: Clip.antiAlias,
+        child: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              if ('${p['image'] ?? ''}'.isNotEmpty)
+                AspectRatio(aspectRatio: 16 / 9, child: Img(p['image']?.toString())),
+              Padding(
+                padding: const EdgeInsets.all(18),
+                child: Column(
+                  children: [
+                    if ('${p['title'] ?? ''}'.isNotEmpty)
+                      Text('${p['title']}',
+                          textAlign: TextAlign.center,
+                          style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w800)),
+                    if ('${p['message'] ?? ''}'.isNotEmpty) ...[
+                      const SizedBox(height: 8),
+                      Text('${p['message']}',
+                          textAlign: TextAlign.center, style: const TextStyle(color: Colors.white70)),
+                    ],
+                    const SizedBox(height: 16),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: OutlinedButton(
+                            onPressed: () => Navigator.pop(ctx),
+                            child: const Text('Close'),
+                          ),
+                        ),
+                        if ('${p['link'] ?? ''}'.isNotEmpty) ...[
+                          const SizedBox(width: 10),
+                          Expanded(
+                            child: FilledButton(
+                              style: FilledButton.styleFrom(backgroundColor: kRed),
+                              onPressed: () {
+                                Navigator.pop(ctx);
+                                openLink('${p['link']}');
+                              },
+                              child: Text('${p['buttonText'] ?? ''}'.isEmpty ? 'Open' : '${p['buttonText']}'),
+                            ),
+                          ),
+                        ],
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+    if (!always) {
+      seen.add('${p['id']}');
+      await sp.setStringList('seen_popups', seen);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final pages = [
+      HomeScreen(onSearch: () => setState(() => tab = 2)),
+      const CategoryScreen(),
+      const SearchScreen(),
+      const ProfileScreen(),
+    ];
+    return Scaffold(
+      body: IndexedStack(index: tab, children: pages),
+      bottomNavigationBar: _NavBar(index: tab, onTap: (i) => setState(() => tab = i)),
+    );
+  }
+}
+
+class _NavBar extends StatelessWidget {
+  final int index;
+  final ValueChanged<int> onTap;
+  const _NavBar({required this.index, required this.onTap});
+
+  static const _items = [
+    (Icons.home_rounded, Icons.home_outlined, 'Home'),
+    (Icons.grid_view_rounded, Icons.grid_view_outlined, 'Explore'),
+    (Icons.search_rounded, Icons.search_rounded, 'Search'),
+    (Icons.person_rounded, Icons.person_outline_rounded, 'Profile'),
+  ];
+
+  Widget _item(int i) {
+    final sel = i == index;
+    final it = _items[i];
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTap: () {
+        if (!sel) HapticFeedback.selectionClick();
+        onTap(i);
+      },
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 280),
+        curve: Curves.easeOutCubic,
+        padding: EdgeInsets.symmetric(horizontal: sel ? 16 : 12, vertical: 10),
+        decoration: BoxDecoration(
+          gradient: sel ? kRedGradient : null,
+          borderRadius: BorderRadius.circular(22),
+          boxShadow: sel ? [BoxShadow(color: kRed.withOpacity(0.4), blurRadius: 14, offset: const Offset(0, 4))] : null,
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(sel ? it.$1 : it.$2, size: 24, color: sel ? Colors.white : Colors.white54),
+            AnimatedSize(
+              duration: const Duration(milliseconds: 280),
+              curve: Curves.easeOutCubic,
+              child: sel
+                  ? Padding(
+                      padding: const EdgeInsets.only(left: 8),
+                      child: Text(it.$3, style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 13)),
+                    )
+                  : const SizedBox.shrink(),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return SafeArea(
+      top: false,
+      child: Container(
+        margin: const EdgeInsets.fromLTRB(16, 4, 16, 10),
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
+        decoration: BoxDecoration(
+          color: kCard.withOpacity(0.96),
+          borderRadius: BorderRadius.circular(30),
+          border: Border.all(color: Colors.white10),
+          boxShadow: const [BoxShadow(color: Colors.black87, blurRadius: 20, offset: Offset(0, 6))],
+        ),
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.spaceAround,
+          children: [for (var i = 0; i < _items.length; i++) _item(i)],
+        ),
+      ),
+    );
+  }
+}
+
+########## FILE: lib/home.dart ##########
+import 'dart:async';
+
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:flutter/material.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+
+import 'profile.dart';
+import 'store.dart';
+import 'logo_data.dart';
+import 'theme.dart';
+import 'widgets.dart';
+
+class HomeScreen extends StatelessWidget {
+  final VoidCallback? onSearch;
+  const HomeScreen({super.key, this.onSearch});
+
+  static double _rating(Item e) => e['rating'] is num ? (e['rating'] as num).toDouble() : 0.0;
+
+  @override
+  Widget build(BuildContext context) {
+    return SafeArea(
+      bottom: false,
+      child: ValueListenableBuilder<bool>(
+        valueListenable: Store.ready,
+        builder: (_, ready, __) {
+          if (!ready) return const HomeSkeleton();
+          return ValueListenableBuilder<List<Item>>(
+            valueListenable: Store.content,
+            builder: (_, all, __) {
+              List<Item> of(String t) => all.where((e) => e['type'] == t).toList();
+              final top = all.where((e) => _rating(e) > 0).toList()
+                ..sort((a, b) => _rating(b).compareTo(_rating(a)));
+              return Pull(
+                child: ListView(
+                  physics: const AlwaysScrollableScrollPhysics(parent: BouncingScrollPhysics()),
+                  padding: const EdgeInsets.only(bottom: 28),
+                  children: [
+                    _Header(onSearch: onSearch),
+                    const HeroSlider(),
+                    const AdBanner('home'),
+                    if (all.isEmpty)
+                      const SizedBox(
+                        height: 280,
+                        child: EmptyState(
+                          icon: Icons.movie_filter_outlined,
+                          title: 'No content yet',
+                          subtitle: 'Pull down to refresh or check back soon!',
+                        ),
+                      ),
+                    hRow(context, 'Latest', all.take(15).toList()),
+                    hRow(context, 'Top Rated', top.take(15).toList()),
+                    hRow(context, 'Movies', of('movie')),
+                    hRow(context, 'Series', of('tv')),
+                    hRow(context, 'More', of('other')),
+                  ],
+                ),
+              );
+            },
+          );
+        },
+      ),
+    );
+  }
+}
+
+class _Header extends StatefulWidget {
+  final VoidCallback? onSearch;
+  const _Header({this.onSearch});
+
+  @override
+  State<_Header> createState() => _HeaderState();
+}
+
+class _HeaderState extends State<_Header> {
+  int _seen = 0;
+
+  @override
+  void initState() {
+    super.initState();
+    SharedPreferences.getInstance().then((sp) {
+      if (mounted) setState(() => _seen = sp.getInt('seen_notifs') ?? 0);
+    });
+  }
+
+  String get _greeting {
+    final h = DateTime.now().hour;
+    if (h < 5) return 'Late night';
+    if (h < 12) return 'Good morning';
+    if (h < 17) return 'Good afternoon';
+    return 'Good evening';
+  }
+
+  Future<void> _openNotifs() async {
+    final n = Store.notifs.value.length;
+    final sp = await SharedPreferences.getInstance();
+    await sp.setInt('seen_notifs', n);
+    if (mounted) setState(() => _seen = n);
+    if (!mounted) return;
+    Navigator.push(context, MaterialPageRoute(builder: (_) => const NotificationsScreen()));
+  }
+
+  Widget _circleBtn(IconData i, VoidCallback on, {bool dot = false}) => Padding(
+        padding: const EdgeInsets.only(left: 8),
+        child: Material(
+          color: kCard,
+          shape: const CircleBorder(side: BorderSide(color: Colors.white10)),
+          child: InkWell(
+            customBorder: const CircleBorder(),
+            onTap: on,
+            child: SizedBox(
+              width: 42,
+              height: 42,
+              child: Stack(
+                alignment: Alignment.center,
+                children: [
+                  Icon(i, size: 22),
+                  if (dot)
+                    Positioned(
+                      top: 10,
+                      right: 11,
+                      child: Container(
+                        width: 9,
+                        height: 9,
+                        decoration: BoxDecoration(
+                          color: kRed,
+                          shape: BoxShape.circle,
+                          border: Border.all(color: kCard, width: 1.5),
+                        ),
+                      ),
+                    ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      );
+
+  @override
+  Widget build(BuildContext context) {
+    final name = FirebaseAuth.instance.currentUser?.displayName ?? '';
+    final first = name.trim().isEmpty ? 'Cheetah' : name.trim().split(' ').first;
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 8, 12, 14),
+      child: Row(
+        children: [
+          Container(
+            padding: const EdgeInsets.all(2),
+            decoration: BoxDecoration(gradient: kRedGradient, borderRadius: BorderRadius.circular(13)),
+            child: ClipRRect(
+              borderRadius: BorderRadius.circular(11),
+              child: Image.memory(kLogoBytes, width: 38, height: 38),
+            ),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(_greeting, style: const TextStyle(fontSize: 12, color: Colors.white54)),
+                Text(first,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w800, height: 1.15)),
+              ],
+            ),
+          ),
+          _circleBtn(Icons.search_rounded, () => widget.onSearch?.call()),
+          ValueListenableBuilder<List<Item>>(
+            valueListenable: Store.notifs,
+            builder: (_, l, __) =>
+                _circleBtn(Icons.notifications_none_rounded, _openNotifs, dot: l.length > _seen),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _Slide {
+  final String image, title, contentId, link, meta;
+  _Slide(this.image, this.title, this.contentId, this.link, this.meta);
+}
+
+class HeroSlider extends StatefulWidget {
+  const HeroSlider({super.key});
+
+  @override
+  State<HeroSlider> createState() => _HeroSliderState();
+}
+
+class _HeroSliderState extends State<HeroSlider> {
+  static const _vf = 0.88;
+  final _pc = PageController(viewportFraction: _vf);
+  Timer? _t;
+  int _i = 0;
+  DateTime _touched = DateTime.fromMillisecondsSinceEpoch(0);
+
+  @override
+  void initState() {
+    super.initState();
+    _t = Timer.periodic(const Duration(seconds: 5), (_) {
+      if (!_pc.hasClients) return;
+      if (DateTime.now().difference(_touched) < const Duration(seconds: 7)) return;
+      final n = _items().length;
+      if (n < 2) return;
+      _pc.animateToPage((_i + 1) % n,
+          duration: const Duration(milliseconds: 550), curve: Curves.easeInOutCubic);
+    });
+  }
+
+  @override
+  void dispose() {
+    _t?.cancel();
+    _pc.dispose();
+    super.dispose();
+  }
+
+  Item? _content(String id) =>
+      id.isEmpty ? null : Store.content.value.where((e) => e['id'] == id).firstOrNull;
+
+  String _meta(Item? it) {
+    if (it == null) return '';
+    final p = <String>[];
+    final y = '${it['year'] ?? ''}';
+    if (y.isNotEmpty) p.add(y);
+    p.add(it['type'] == 'tv' ? 'Series' : (it['type'] == 'movie' ? 'Movie' : 'Featured'));
+    final r = it['rating'] is num ? (it['rating'] as num).toDouble() : 0.0;
+    if (r > 0) p.add('★ ${r.toStringAsFixed(1)}');
+    return p.join('  ·  ');
+  }
+
+  List<_Slide> _items() {
+    final s = Store.slides.value
+        .where((e) => e['active'] != false && '${e['image'] ?? ''}'.isNotEmpty)
+        .toList();
+    if (s.isNotEmpty) {
+      return s.map((e) {
+        final id = '${e['contentId'] ?? ''}';
+        return _Slide('${e['image']}', '${e['title'] ?? ''}', id, '${e['link'] ?? ''}', _meta(_content(id)));
+      }).toList();
+    }
+    return Store.content.value
+        .where((e) => '${e['backdrop'] ?? ''}'.isNotEmpty)
+        .take(5)
+        .map((e) => _Slide('${e['backdrop']}', '${e['title'] ?? ''}', '${e['id']}', '', _meta(e)))
+        .toList();
+  }
+
+  void _tap(_Slide s) {
+    final it = _content(s.contentId);
+    if (it != null) {
+      openItem(context, it);
+      return;
+    }
+    openLink(s.link);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AnimatedBuilder(
+      animation: Listenable.merge([Store.slides, Store.content]),
+      builder: (_, __) {
+        final items = _items();
+        if (items.isEmpty) return const SizedBox.shrink();
+        return LayoutBuilder(
+          builder: (_, box) {
+            final h = box.maxWidth * _vf * 10 / 16;
+            return Column(
+              children: [
+                SizedBox(
+                  height: h,
+                  child: Listener(
+                    onPointerDown: (_) => _touched = DateTime.now(),
+                    child: PageView.builder(
+                      controller: _pc,
+                      physics: const PageScrollPhysics(parent: BouncingScrollPhysics()),
+                      itemCount: items.length,
+                      onPageChanged: (i) => setState(() => _i = i),
+                      itemBuilder: (_, i) => AnimatedBuilder(
+                        animation: _pc,
+                        builder: (_, child) {
+                          var page = _i.toDouble();
+                          if (_pc.hasClients && _pc.position.haveDimensions) page = _pc.page ?? page;
+                          final d = (page - i).abs().clamp(0.0, 1.0);
+                          return Transform.scale(
+                            scale: 1 - d * 0.07,
+                            child: Opacity(opacity: 1 - d * 0.35, child: child),
+                          );
+                        },
+                        child: _slide(items[i]),
+                      ),
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 12),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    for (var i = 0; i < items.length; i++)
+                      AnimatedContainer(
+                        duration: const Duration(milliseconds: 280),
+                        curve: Curves.easeOutCubic,
+                        margin: const EdgeInsets.symmetric(horizontal: 3),
+                        width: i == _i ? 22 : 6,
+                        height: 6,
+                        decoration: BoxDecoration(
+                          gradient: i == _i ? kRedGradient : null,
+                          color: i == _i ? null : Colors.white24,
+                          borderRadius: BorderRadius.circular(3),
+                        ),
+                      ),
+                  ],
+                ),
+              ],
+            );
+          },
+        );
+      },
+    );
+  }
+
+  Widget _slide(_Slide s) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 5),
+      child: GestureDetector(
+        onTap: () => _tap(s),
+        child: Container(
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(22),
+            border: Border.all(color: Colors.white12),
+            boxShadow: [BoxShadow(color: kRed.withOpacity(0.18), blurRadius: 22, offset: const Offset(0, 8))],
+          ),
+          child: ClipRRect(
+            borderRadius: BorderRadius.circular(21),
+            child: Stack(
+              fit: StackFit.expand,
+              children: [
+                Img(s.image),
+                const DecoratedBox(
+                  decoration: BoxDecoration(
+                    gradient: LinearGradient(
+                      begin: Alignment.topCenter,
+                      end: Alignment.bottomCenter,
+                      colors: [Colors.transparent, Color(0xF2000000)],
+                      stops: [0.35, 1],
+                    ),
+                  ),
+                ),
+                Positioned(
+                  left: 16,
+                  right: 16,
+                  bottom: 14,
+                  child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.end,
+                    children: [
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            if (s.title.isNotEmpty)
+                              Text(
+                                s.title,
+                                maxLines: 2,
+                                overflow: TextOverflow.ellipsis,
+                                style: const TextStyle(fontSize: 19, fontWeight: FontWeight.w800, height: 1.15),
+                              ),
+                            if (s.meta.isNotEmpty) ...[
+                              const SizedBox(height: 4),
+                              Text(s.meta, style: const TextStyle(fontSize: 12, color: Colors.white70)),
+                            ],
+                          ],
+                        ),
+                      ),
+                      const SizedBox(width: 10),
+                      Container(
+                        width: 44,
+                        height: 44,
+                        decoration: BoxDecoration(
+                          gradient: kRedGradient,
+                          shape: BoxShape.circle,
+                          boxShadow: [BoxShadow(color: kRed.withOpacity(0.5), blurRadius: 14)],
+                        ),
+                        child: const Icon(Icons.play_arrow_rounded, size: 28),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+########## FILE: lib/browse.dart ##########
+import 'dart:async';
+
+import 'package:flutter/material.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+
+import 'store.dart';
+import 'theme.dart';
+import 'widgets.dart';
+
+class _Pill extends StatelessWidget {
+  final String label;
+  final bool selected;
+  final VoidCallback onTap;
+  const _Pill({required this.label, required this.selected, required this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: onTap,
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 220),
+        curve: Curves.easeOut,
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+        decoration: BoxDecoration(
+          gradient: selected ? kRedGradient : null,
+          color: selected ? null : kCard,
+          borderRadius: BorderRadius.circular(22),
+          border: Border.all(color: selected ? Colors.transparent : Colors.white10),
+        ),
+        child: Text(
+          label,
+          style: TextStyle(
+            fontSize: 13,
+            fontWeight: FontWeight.w700,
+            color: selected ? Colors.white : Colors.white70,
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+Widget _pillRow(List<MapEntry<String, String>> items, String sel, void Function(String) on) {
+  return SizedBox(
+    height: 42,
+    child: ListView.separated(
+      scrollDirection: Axis.horizontal,
+      physics: const BouncingScrollPhysics(),
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 3),
+      itemCount: items.length,
+      separatorBuilder: (_, __) => const SizedBox(width: 8),
+      itemBuilder: (_, i) => _Pill(
+        label: items[i].value,
+        selected: sel == items[i].key,
+        onTap: () => on(items[i].key),
+      ),
+    ),
+  );
+}
+
+class CategoryScreen extends StatefulWidget {
+  const CategoryScreen({super.key});
+
+  @override
+  State<CategoryScreen> createState() => _CategoryScreenState();
+}
+
+class _CategoryScreenState extends State<CategoryScreen> {
+  String type = 'all';
+  String genre = '';
+
+  @override
+  Widget build(BuildContext context) {
+    return SafeArea(
+      bottom: false,
+      child: ValueListenableBuilder<List<Item>>(
+        valueListenable: Store.content,
+        builder: (_, all, __) {
+          final genres = <String>{};
+          for (final e in all) {
+            final g = e['genres'];
+            if (g is List) genres.addAll(g.map((x) => '$x'));
+          }
+          final list = all.where((e) {
+            final okType = type == 'all' || e['type'] == type;
+            final g = e['genres'];
+            final okGenre = genre.isEmpty || (g is List && g.contains(genre));
+            return okType && okGenre;
+          }).toList();
+          const types = {'all': 'All', 'movie': 'Movies', 'tv': 'Series', 'other': 'More'};
+          return Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Padding(
+                padding: const EdgeInsets.fromLTRB(16, 14, 16, 10),
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.end,
+                  children: [
+                    const Expanded(
+                      child: Text('Explore', style: TextStyle(fontSize: 26, fontWeight: FontWeight.w800)),
+                    ),
+                    AnimatedSwitcher(
+                      duration: const Duration(milliseconds: 200),
+                      child: Text(
+                        '${list.length} titles',
+                        key: ValueKey(list.length),
+                        style: const TextStyle(color: Colors.white54, fontSize: 13),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              _pillRow(types.entries.toList(), type, (k) => setState(() => type = k)),
+              if (genres.isNotEmpty) ...[
+                const SizedBox(height: 6),
+                _pillRow(
+                  [const MapEntry('', 'Any genre'), ...(genres.toList()..sort()).map((g) => MapEntry(g, g))],
+                  genre,
+                  (k) => setState(() => genre = k),
+                ),
+              ],
+              const SizedBox(height: 6),
+              Expanded(
+                child: list.isEmpty
+                    ? emptyScrollable(const EmptyState(
+                        icon: Icons.movie_filter_outlined,
+                        title: 'Nothing here yet',
+                        subtitle: 'Try another filter, or pull down to refresh.',
+                      ))
+                    : Pull(child: posterGrid(list)),
+              ),
+            ],
+          );
+        },
+      ),
+    );
+  }
+}
+
+class SearchScreen extends StatefulWidget {
+  const SearchScreen({super.key});
+
+  @override
+  State<SearchScreen> createState() => _SearchScreenState();
+}
+
+class _SearchScreenState extends State<SearchScreen> {
+  final _ctl = TextEditingController();
+  Timer? _debounce;
+  String q = '';
+  List<String> recents = [];
+
+  @override
+  void initState() {
+    super.initState();
+    SharedPreferences.getInstance().then((sp) {
+      if (mounted) setState(() => recents = sp.getStringList('recent_searches') ?? []);
+    });
+  }
+
+  @override
+  void dispose() {
+    _debounce?.cancel();
+    _ctl.dispose();
+    super.dispose();
+  }
+
+  void _onChanged(String v) {
+    _debounce?.cancel();
+    _debounce = Timer(const Duration(milliseconds: 220), () {
+      if (mounted) setState(() => q = v.trim().toLowerCase());
+    });
+    setState(() {}); // refresh the clear button immediately
+  }
+
+  Future<void> _saveRecent(String v) async {
+    final t = v.trim();
+    if (t.isEmpty) return;
+    final l = [t, ...recents.where((e) => e.toLowerCase() != t.toLowerCase())].take(8).toList();
+    setState(() => recents = l);
+    final sp = await SharedPreferences.getInstance();
+    await sp.setStringList('recent_searches', l);
+  }
+
+  Future<void> _clearRecents() async {
+    setState(() => recents = []);
+    final sp = await SharedPreferences.getInstance();
+    await sp.remove('recent_searches');
+  }
+
+  void _use(String s) {
+    _ctl.text = s;
+    _ctl.selection = TextSelection.collapsed(offset: s.length);
+    setState(() => q = s.toLowerCase());
+    FocusScope.of(context).unfocus();
+  }
+
+  bool _match(Item e) {
+    if ('${e['title'] ?? ''}'.toLowerCase().contains(q)) return true;
+    if ('${e['year'] ?? ''}' == q) return true;
+    final g = e['genres'];
+    return g is List && g.any((x) => '$x'.toLowerCase().contains(q));
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return SafeArea(
+      bottom: false,
+      child: Column(
+        children: [
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 14, 16, 8),
+            child: TextField(
+              controller: _ctl,
+              onChanged: _onChanged,
+              textInputAction: TextInputAction.search,
+              onSubmitted: (v) {
+                _debounce?.cancel();
+                setState(() => q = v.trim().toLowerCase());
+                _saveRecent(v);
+              },
+              decoration: InputDecoration(
+                hintText: 'Search movies, series, genres…',
+                hintStyle: const TextStyle(color: Colors.white38),
+                prefixIcon: const Icon(Icons.search_rounded),
+                suffixIcon: _ctl.text.isEmpty
+                    ? null
+                    : IconButton(
+                        icon: const Icon(Icons.close_rounded, size: 20),
+                        onPressed: () {
+                          _ctl.clear();
+                          _debounce?.cancel();
+                          setState(() => q = '');
+                        },
+                      ),
+                filled: true,
+                fillColor: kCard,
+                contentPadding: const EdgeInsets.symmetric(vertical: 14),
+                border: OutlineInputBorder(borderRadius: BorderRadius.circular(16), borderSide: BorderSide.none),
+                focusedBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(16),
+                  borderSide: const BorderSide(color: kRed, width: 1.2),
+                ),
+              ),
+            ),
+          ),
+          Expanded(
+            child: ValueListenableBuilder<List<Item>>(
+              valueListenable: Store.content,
+              builder: (_, all, __) {
+                if (q.isEmpty) return _idle(all);
+                final res = all.where(_match).toList();
+                if (res.isEmpty) {
+                  return emptyScrollable(EmptyState(
+                    icon: Icons.search_off_rounded,
+                    title: 'No results',
+                    subtitle: 'Nothing matched “${_ctl.text.trim()}”.\nTry a different title or genre.',
+                  ));
+                }
+                return Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Padding(
+                      padding: const EdgeInsets.fromLTRB(18, 4, 16, 0),
+                      child: Text('${res.length} result${res.length == 1 ? '' : 's'}',
+                          style: const TextStyle(color: Colors.white54, fontSize: 13)),
+                    ),
+                    Expanded(child: Pull(child: posterGrid(res))),
+                  ],
+                );
+              },
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _idle(List<Item> all) {
+    final top = all.where((e) => e['rating'] is num && (e['rating'] as num) > 0).toList()
+      ..sort((a, b) => (b['rating'] as num).compareTo(a['rating'] as num));
+    return Pull(
+      child: CustomScrollView(
+        physics: const AlwaysScrollableScrollPhysics(),
+        keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
+        slivers: [
+          if (recents.isNotEmpty)
+            SliverToBoxAdapter(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(16, 8, 8, 4),
+                    child: Row(
+                      children: [
+                        const Expanded(
+                          child: Text('Recent', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w800)),
+                        ),
+                        TextButton(
+                          onPressed: _clearRecents,
+                          style: TextButton.styleFrom(foregroundColor: Colors.white54),
+                          child: const Text('Clear'),
+                        ),
+                      ],
+                    ),
+                  ),
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 16),
+                    child: Wrap(
+                      spacing: 8,
+                      runSpacing: 8,
+                      children: [
+                        for (final r in recents)
+                          ActionChip(
+                            avatar: const Icon(Icons.history_rounded, size: 16, color: Colors.white54),
+                            label: Text(r),
+                            backgroundColor: kCard,
+                            side: const BorderSide(color: Colors.white10),
+                            shape: const StadiumBorder(),
+                            onPressed: () => _use(r),
+                          ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          if (top.isNotEmpty) ...[
+            SliverToBoxAdapter(child: sectionHeader('Top rated')),
+            SliverPadding(
+              padding: const EdgeInsets.fromLTRB(16, 0, 16, 24),
+              sliver: posterSliver(top.take(18).toList()),
+            ),
+          ] else if (recents.isEmpty)
+            const SliverFillRemaining(
+              hasScrollBody: false,
+              child: EmptyState(
+                icon: Icons.search_rounded,
+                title: 'Find something to watch',
+                subtitle: 'Search by title, genre or year.',
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+}
+
+########## FILE: lib/profile.dart ##########
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:flutter/material.dart';
+
+import 'library.dart';
+import 'store.dart';
+import 'logo_data.dart';
+import 'theme.dart';
+import 'userdata.dart';
+import 'widgets.dart';
+
+const kAvatarColors = <List<Color>>[
+  [Color(0xFFFF4458), Color(0xFF9B0F1D)],
+  [Color(0xFFFF9A3C), Color(0xFFE5501B)],
+  [Color(0xFF29B6F6), Color(0xFF0D47A1)],
+  [Color(0xFF66BB6A), Color(0xFF1B5E20)],
+  [Color(0xFFAB47BC), Color(0xFF4A148C)],
+  [Color(0xFFEC407A), Color(0xFF880E4F)],
+  [Color(0xFF26C6DA), Color(0xFF006064)],
+  [Color(0xFF8D6E63), Color(0xFF3E2723)],
+];
+
+class Avatar extends StatelessWidget {
+  final String name;
+  final int color;
+  final double size;
+  const Avatar({super.key, required this.name, this.color = 0, this.size = 96});
+
+  @override
+  Widget build(BuildContext context) {
+    final c = kAvatarColors[color.clamp(0, kAvatarColors.length - 1)];
+    return Container(
+      width: size,
+      height: size,
+      alignment: Alignment.center,
+      decoration: BoxDecoration(
+        shape: BoxShape.circle,
+        gradient: LinearGradient(begin: Alignment.topLeft, end: Alignment.bottomRight, colors: c),
+        border: Border.all(color: Colors.white24, width: 3),
+        boxShadow: [BoxShadow(color: c.first.withOpacity(0.5), blurRadius: 24)],
+      ),
+      child: Text(
+        name.isEmpty ? '?' : name.substring(0, 1).toUpperCase(),
+        style: TextStyle(fontSize: size * 0.42, fontWeight: FontWeight.w800, color: Colors.white),
+      ),
+    );
+  }
+}
+
+class ProfileScreen extends StatelessWidget {
+  const ProfileScreen({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return SafeArea(
+      bottom: false,
+      child: Pull(
+        child: ListView(
+          physics: const AlwaysScrollableScrollPhysics(),
+          padding: const EdgeInsets.fromLTRB(16, 12, 16, 110),
+          children: [
+            ValueListenableBuilder<Item>(
+              valueListenable: UserData.profile,
+              builder: (_, p, __) => _header(context, p),
+            ),
+            const SizedBox(height: 18),
+            _stats(),
+            const SizedBox(height: 22),
+            _lastWatch(context),
+            const SizedBox(height: 8),
+            _label('My library'),
+            _tile(context, Icons.history_rounded, 'Watch history', const Color(0xFF29B6F6),
+                () => _open(context, const LibraryScreen(kind: LibKind.history))),
+            _tile(context, Icons.bookmark_rounded, 'Watchlist', const Color(0xFFFFB300),
+                () => _open(context, const LibraryScreen(kind: LibKind.watchlist))),
+            _tile(context, Icons.favorite_rounded, 'Favorites', kRedLight,
+                () => _open(context, const LibraryScreen(kind: LibKind.favorites))),
+            _tile(context, Icons.thumb_up_rounded, 'Liked', const Color(0xFF66BB6A),
+                () => _open(context, const LibraryScreen(kind: LibKind.likes))),
+            const SizedBox(height: 8),
+            _label('Settings'),
+            _tile(context, Icons.notifications_none_rounded, 'Notifications', Colors.white70,
+                () => _open(context, const NotificationsScreen())),
+            _tile(context, Icons.info_outline, 'About Cheetah', Colors.white70, () {
+              showAboutDialog(
+                context: context,
+                applicationName: 'Cheetah',
+                applicationVersion: '1.0.0',
+                applicationIcon: ClipRRect(
+                  borderRadius: BorderRadius.circular(12),
+                  child: Image.memory(kLogoBytes, width: 48, height: 48),
+                ),
+              );
+            }),
+            _tile(context, Icons.logout, 'Log out', Colors.redAccent, () async {
+              final ok = await showDialog<bool>(
+                context: context,
+                builder: (ctx) => AlertDialog(
+                  title: const Text('Log out?'),
+                  actions: [
+                    TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
+                    TextButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('Log out')),
+                  ],
+                ),
+              );
+              if (ok == true) await FirebaseAuth.instance.signOut();
+            }, color: Colors.redAccent),
+          ],
+        ),
+      ),
+    );
+  }
+
+  void _open(BuildContext c, Widget w) => Navigator.push(c, MaterialPageRoute(builder: (_) => w));
+
+  Widget _header(BuildContext context, Item p) {
+    final u = FirebaseAuth.instance.currentUser;
+    final name = (u?.displayName ?? '').isNotEmpty ? u!.displayName! : 'Cheetah user';
+    final color = p['avatar'] is int ? p['avatar'] as int : 0;
+    return Container(
+      padding: const EdgeInsets.fromLTRB(16, 22, 16, 18),
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(28),
+        gradient: LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [kRed.withOpacity(0.28), kCard],
+        ),
+        border: Border.all(color: Colors.white10),
+      ),
+      child: Column(
+        children: [
+          Avatar(name: name, color: color),
+          const SizedBox(height: 12),
+          Text(name, style: const TextStyle(fontSize: 22, fontWeight: FontWeight.w800)),
+          const SizedBox(height: 2),
+          Text(u?.email ?? '', style: const TextStyle(color: Colors.white54)),
+          if ('${p['bio'] ?? ''}'.isNotEmpty) ...[
+            const SizedBox(height: 8),
+            Text('${p['bio']}', textAlign: TextAlign.center, style: const TextStyle(color: Colors.white70)),
+          ],
+          const SizedBox(height: 14),
+          OutlinedButton.icon(
+            onPressed: () => _open(context, const EditProfileScreen()),
+            icon: const Icon(Icons.edit_rounded, size: 18),
+            label: const Text('Edit profile'),
+            style: OutlinedButton.styleFrom(
+              foregroundColor: Colors.white,
+              side: const BorderSide(color: Colors.white24),
+              shape: const StadiumBorder(),
+              padding: const EdgeInsets.symmetric(horizontal: 22, vertical: 10),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _stats() {
+    Widget cell(String label, ValueNotifier<Map<String, Item>> n) => Expanded(
+          child: ValueListenableBuilder<Map<String, Item>>(
+            valueListenable: n,
+            builder: (_, m, __) => Container(
+              padding: const EdgeInsets.symmetric(vertical: 14),
+              decoration: BoxDecoration(color: kCard, borderRadius: BorderRadius.circular(18)),
+              child: Column(
+                children: [
+                  Text('${m.length}', style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w800)),
+                  const SizedBox(height: 2),
+                  Text(label, style: const TextStyle(fontSize: 12, color: Colors.white54)),
+                ],
+              ),
+            ),
+          ),
+        );
+    return Row(children: [
+      cell('Watched', UserData.history),
+      const SizedBox(width: 10),
+      cell('Watchlist', UserData.watchlist),
+      const SizedBox(width: 10),
+      cell('Favorites', UserData.favorites),
+    ]);
+  }
+
+  Widget _lastWatch(BuildContext context) {
+    return ValueListenableBuilder<Map<String, Item>>(
+      valueListenable: UserData.history,
+      builder: (_, m, __) {
+        final l = UserData.sorted(m);
+        if (l.isEmpty) return const SizedBox.shrink();
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            _label('Last watched'),
+            HistoryTile(item: l.first, big: true),
+            const SizedBox(height: 10),
+          ],
+        );
+      },
+    );
+  }
+
+  Widget _label(String t) => Padding(
+        padding: const EdgeInsets.fromLTRB(4, 4, 0, 10),
+        child: Text(t.toUpperCase(),
+            style: const TextStyle(fontSize: 12, letterSpacing: 1.2, color: Colors.white38, fontWeight: FontWeight.w700)),
+      );
+
+  Widget _tile(BuildContext context, IconData i, String t, Color ic, VoidCallback on, {Color? color}) => Padding(
+        padding: const EdgeInsets.only(bottom: 10),
+        child: Material(
+          color: kCard,
+          borderRadius: BorderRadius.circular(16),
+          child: ListTile(
+            leading: Container(
+              width: 38,
+              height: 38,
+              decoration: BoxDecoration(color: ic.withOpacity(0.16), borderRadius: BorderRadius.circular(12)),
+              child: Icon(i, color: ic, size: 22),
+            ),
+            title: Text(t, style: TextStyle(color: color, fontWeight: FontWeight.w600)),
+            trailing: const Icon(Icons.chevron_right, color: Colors.white38),
+            onTap: on,
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+          ),
+        ),
+      );
+}
+
+class EditProfileScreen extends StatefulWidget {
+  const EditProfileScreen({super.key});
+
+  @override
+  State<EditProfileScreen> createState() => _EditProfileScreenState();
+}
+
+class _EditProfileScreenState extends State<EditProfileScreen> {
+  late final TextEditingController name;
+  late final TextEditingController bio;
+  late int color;
+  bool saving = false;
+
+  @override
+  void initState() {
+    super.initState();
+    final u = FirebaseAuth.instance.currentUser;
+    final p = UserData.profile.value;
+    name = TextEditingController(text: u?.displayName ?? '');
+    bio = TextEditingController(text: '${p['bio'] ?? ''}');
+    color = p['avatar'] is int ? p['avatar'] as int : 0;
+  }
+
+  @override
+  void dispose() {
+    name.dispose();
+    bio.dispose();
+    super.dispose();
+  }
+
+  Future<void> _save() async {
+    final n = name.text.trim();
+    if (n.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Please enter a name')));
+      return;
+    }
+    setState(() => saving = true);
+    try {
+      await FirebaseAuth.instance.currentUser?.updateDisplayName(n);
+      await UserData.saveProfile({'name': n, 'bio': bio.text.trim(), 'avatar': color});
+      if (mounted) Navigator.pop(context);
+    } catch (_) {
+      if (mounted) {
+        setState(() => saving = false);
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Could not save. Try again.')));
+      }
+    }
+  }
+
+  InputDecoration _dec(String l, IconData i) => InputDecoration(
+        labelText: l,
+        prefixIcon: Icon(i),
+        filled: true,
+        fillColor: kCard,
+        border: OutlineInputBorder(borderRadius: BorderRadius.circular(16), borderSide: BorderSide.none),
+      );
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(title: const Text('Edit profile', style: TextStyle(fontWeight: FontWeight.w800))),
+      body: ListView(
+        padding: const EdgeInsets.all(20),
+        children: [
+          Center(child: Avatar(name: name.text, color: color, size: 104)),
+          const SizedBox(height: 18),
+          SizedBox(
+            height: 48,
+            child: ListView.separated(
+              scrollDirection: Axis.horizontal,
+              itemCount: kAvatarColors.length,
+              separatorBuilder: (_, __) => const SizedBox(width: 12),
+              itemBuilder: (_, i) => GestureDetector(
+                onTap: () => setState(() => color = i),
+                child: Container(
+                  width: 48,
+                  height: 48,
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    gradient: LinearGradient(colors: kAvatarColors[i]),
+                    border: Border.all(color: i == color ? Colors.white : Colors.transparent, width: 3),
+                  ),
+                  child: i == color ? const Icon(Icons.check_rounded) : null,
+                ),
+              ),
+            ),
+          ),
+          const SizedBox(height: 26),
+          TextField(
+            controller: name,
+            onChanged: (_) => setState(() {}),
+            textCapitalization: TextCapitalization.words,
+            decoration: _dec('Name', Icons.person_outline_rounded),
+          ),
+          const SizedBox(height: 14),
+          TextField(
+            controller: bio,
+            maxLength: 80,
+            decoration: _dec('Bio (optional)', Icons.short_text_rounded),
+          ),
+          const SizedBox(height: 10),
+          TextField(
+            controller: TextEditingController(text: FirebaseAuth.instance.currentUser?.email ?? ''),
+            enabled: false,
+            decoration: _dec('Email', Icons.mail_outline_rounded),
+          ),
+          const SizedBox(height: 24),
+          saving
+              ? const Center(child: CircularProgressIndicator())
+              : GradientButton(icon: Icons.check_rounded, label: 'Save changes', onTap: _save),
+        ],
+      ),
+    );
+  }
+}
+
+class NotificationsScreen extends StatelessWidget {
+  const NotificationsScreen({super.key});
+
+  String _date(dynamic t) {
+    if (t is! Timestamp) return '';
+    final d = t.toDate();
+    return '${d.day}/${d.month}/${d.year}';
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(title: const Text('Notifications')),
+      body: ValueListenableBuilder<List<Item>>(
+        valueListenable: Store.notifs,
+        builder: (_, list, __) {
+          if (list.isEmpty) {
+            return const Center(child: Text('No notifications', style: TextStyle(color: Colors.white54)));
+          }
+          return Pull(child: ListView.separated(
+            physics: const AlwaysScrollableScrollPhysics(),
+            padding: const EdgeInsets.all(16),
+            itemCount: list.length,
+            separatorBuilder: (_, __) => const SizedBox(height: 10),
+            itemBuilder: (_, i) {
+              final n = list[i];
+              final it = Store.content.value.where((e) => e['id'] == n['contentId']).firstOrNull;
+              return Material(
+                color: kCard,
+                borderRadius: BorderRadius.circular(14),
+                child: InkWell(
+                  borderRadius: BorderRadius.circular(14),
+                  onTap: it == null ? null : () => openItem(context, it),
+                  child: Padding(
+                    padding: const EdgeInsets.all(12),
+                    child: Row(
+                      children: [
+                        if ('${n['image'] ?? ''}'.isNotEmpty)
+                          Padding(
+                            padding: const EdgeInsets.only(right: 12),
+                            child: ClipRRect(
+                              borderRadius: BorderRadius.circular(10),
+                              child: SizedBox(width: 72, height: 72, child: Img(n['image']?.toString())),
+                            ),
+                          ),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text('${n['title'] ?? ''}',
+                                  style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 15)),
+                              if ('${n['body'] ?? ''}'.isNotEmpty)
+                                Padding(
+                                  padding: const EdgeInsets.only(top: 3),
+                                  child: Text('${n['body']}', style: const TextStyle(color: Colors.white70)),
+                                ),
+                              Padding(
+                                padding: const EdgeInsets.only(top: 6),
+                                child: Text(_date(n['createdAt']),
+                                    style: const TextStyle(color: Colors.white38, fontSize: 11)),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              );
+            },
+          ));
+        },
+      ),
+    );
+  }
+}
+
+########## FILE: lib/detail.dart ##########
+import 'package:android_intent_plus/android_intent.dart';
+import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+import 'package:webview_flutter/webview_flutter.dart';
+
+import 'store.dart';
+import 'theme.dart';
+import 'userdata.dart';
+import 'widgets.dart';
+
+class DetailScreen extends StatefulWidget {
+  final Item item;
+  const DetailScreen({super.key, required this.item});
+
+  @override
+  State<DetailScreen> createState() => _DetailScreenState();
+}
+
+class _DetailScreenState extends State<DetailScreen> {
+  Item get it => widget.item;
+  Map<String, dynamic>? omdb;
+  int season = 1, episode = 1, seasonCount = 1, epCount = 1, serverIdx = 0;
+  List<String> epNames = [];
+  bool playing = false;
+
+  bool get isTv => it['type'] == 'tv';
+  String get tmdbId => '${it['tmdbId'] ?? ''}';
+
+  @override
+  void initState() {
+    super.initState();
+    // Resume from the last watched episode.
+    final h = UserData.history.value['${it['id']}'];
+    if (h != null && isTv) {
+      season = (h['season'] as num?)?.toInt() ?? 1;
+      episode = (h['episode'] as num?)?.toInt() ?? 1;
+    }
+    _loadExtra();
+  }
+
+  Future<void> _loadExtra() async {
+    if (tmdbId.isEmpty) return;
+    String imdb = '';
+    if (isTv) {
+      final d = await Api.tmdb('tv/$tmdbId', {'append_to_response': 'external_ids'});
+      if (d == null) return;
+      imdb = '${d['external_ids']?['imdb_id'] ?? ''}';
+      final n = (d['number_of_seasons'] as num?)?.toInt() ?? 1;
+      if (mounted) setState(() => seasonCount = n < 1 ? 1 : n);
+      _loadEpisodes();
+    } else {
+      final d = await Api.tmdb('movie/$tmdbId');
+      imdb = '${d?['imdb_id'] ?? ''}';
+    }
+    final o = await Api.omdb(imdb);
+    if (mounted && o != null) setState(() => omdb = o);
+  }
+
+  Future<void> _loadEpisodes() async {
+    final d = await Api.tmdb('tv/$tmdbId/season/$season');
+    final eps = d?['episodes'];
+    if (eps is List && mounted) {
+      setState(() {
+        epCount = eps.isEmpty ? 1 : eps.length;
+        epNames = [for (final e in eps) '${e is Map ? (e['name'] ?? '') : ''}'];
+        if (episode > epCount) episode = 1;
+      });
+    }
+  }
+
+  String _fill(String tpl) => tpl
+      .replaceAll('{tmdb_id}', tmdbId)
+      .replaceAll('{season}', '$season')
+      .replaceAll('{episode}', '$episode');
+
+  /// Global servers (from the admin panel) + any servers added to this title.
+  List<Map<String, String>> get servers {
+    final l = <Map<String, String>>[];
+    if (tmdbId.isNotEmpty) {
+      for (final s in Store.servers.value.where((s) => s['active'] != false)) {
+        final tpl = '${(isTv ? s['tvUrl'] : s['movieUrl']) ?? ''}';
+        if (tpl.isEmpty) continue;
+        l.add({'name': '${s['name'] ?? 'Server'}', 'url': _fill(tpl)});
+      }
+    }
+    final own = it['servers'];
+    if (own is List) {
+      for (final m in own) {
+        if (m is Map && '${m['url'] ?? ''}'.isNotEmpty) {
+          l.add({'name': '${m['name'] ?? 'Server'}', 'url': _fill('${m['url']}')});
+        }
+      }
+    }
+    return l;
+  }
+
+  Widget _pill(String t, {IconData? icon, Color? color}) => Container(
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+        decoration: BoxDecoration(
+          color: kCard,
+          borderRadius: BorderRadius.circular(20),
+          border: Border.all(color: Colors.white10),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            if (icon != null) ...[Icon(icon, size: 14, color: color), const SizedBox(width: 4)],
+            Text(t, style: const TextStyle(fontSize: 12, color: Colors.white70)),
+          ],
+        ),
+      );
+
+  // ───────────── Action row: like / favorite / watchlist / cast ─────────────
+
+  /// Runs a save and tells the user if Firestore refused it.
+  Future<void> _run(Future<void> f) async {
+    try {
+      await f.timeout(const Duration(seconds: 8));
+    } catch (e) {
+      if (!mounted) return;
+      final t = '$e';
+      final denied = t.contains('permission-denied');
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        duration: const Duration(seconds: 6),
+        content: Text(denied
+            ? 'Save blocked by Firestore rules (users/{uid}). Publish the new rules.'
+            : 'Could not save: ${t.length > 90 ? t.substring(0, 90) : t}'),
+      ));
+    }
+  }
+
+  Widget _action(IconData on, IconData off, String label, bool active, Color activeColor, VoidCallback tap) {
+    return Expanded(
+      child: GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onTap: () {
+          HapticFeedback.lightImpact();
+          tap();
+        },
+        child: Column(
+          children: [
+            AnimatedContainer(
+              duration: const Duration(milliseconds: 220),
+              width: 52,
+              height: 52,
+              decoration: BoxDecoration(
+                color: active ? activeColor.withOpacity(0.18) : kCard,
+                shape: BoxShape.circle,
+                border: Border.all(color: active ? activeColor : Colors.white10, width: 1.4),
+              ),
+              child: AnimatedSwitcher(
+                duration: const Duration(milliseconds: 200),
+                transitionBuilder: (c, a) => ScaleTransition(scale: a, child: c),
+                child: Icon(active ? on : off,
+                    key: ValueKey(active), color: active ? activeColor : Colors.white70, size: 24),
+              ),
+            ),
+            const SizedBox(height: 6),
+            Text(label,
+                style: TextStyle(fontSize: 12, color: active ? activeColor : Colors.white60, fontWeight: FontWeight.w600)),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _actions() {
+    return AnimatedBuilder(
+      animation: Listenable.merge([UserData.likes, UserData.favorites, UserData.watchlist]),
+      builder: (_, __) => Row(
+        children: [
+          _action(Icons.thumb_up_rounded, Icons.thumb_up_outlined, 'Like', UserData.isLiked(it),
+              const Color(0xFF29B6F6), () => _run(UserData.toggleLike(it))),
+          _action(Icons.favorite_rounded, Icons.favorite_border_rounded, 'Favorite', UserData.isFav(it),
+              kRedLight, () => _run(UserData.toggleFav(it))),
+          _action(Icons.bookmark_rounded, Icons.bookmark_border_rounded, 'Watchlist', UserData.inList(it),
+              const Color(0xFFFFB300), () => _run(UserData.toggleList(it))),
+          _action(Icons.cast_rounded, Icons.cast_rounded, 'Cast', false, kRedLight, _cast),
+        ],
+      ),
+    );
+  }
+
+  /// Opens the system Cast / Smart View screen so the phone screen can be sent
+  /// to any Chromecast / Android TV / Miracast TV. Start the video first, then
+  /// choose the TV.
+  Future<void> _cast() async {
+    try {
+      await const AndroidIntent(action: 'android.settings.CAST_SETTINGS').launch();
+    } catch (_) {
+      try {
+        await const AndroidIntent(action: 'android.settings.WIFI_DISPLAY_SETTINGS').launch();
+      } catch (_) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(content: Text('Open Quick Settings and tap Cast / Smart View.')));
+        }
+      }
+    }
+  }
+
+  // ───────────── Seasons & episodes ─────────────
+
+  Widget _seasonRow() {
+    return SizedBox(
+      height: 40,
+      child: ListView.separated(
+        scrollDirection: Axis.horizontal,
+        physics: const BouncingScrollPhysics(),
+        itemCount: seasonCount,
+        separatorBuilder: (_, __) => const SizedBox(width: 8),
+        itemBuilder: (_, i) {
+          final s = i + 1;
+          final sel = s == season;
+          return GestureDetector(
+            onTap: () {
+              if (sel) return;
+              setState(() {
+                season = s;
+                episode = 1;
+                epNames = [];
+              });
+              _loadEpisodes();
+              if (playing) UserData.addHistory(it, season: season, episode: episode);
+            },
+            child: AnimatedContainer(
+              duration: const Duration(milliseconds: 220),
+              padding: const EdgeInsets.symmetric(horizontal: 18),
+              alignment: Alignment.center,
+              decoration: BoxDecoration(
+                gradient: sel ? kRedGradient : null,
+                color: sel ? null : kCard,
+                borderRadius: BorderRadius.circular(20),
+                border: Border.all(color: sel ? Colors.transparent : Colors.white10),
+              ),
+              child: Text('Season $s',
+                  style: TextStyle(fontWeight: FontWeight.w700, color: sel ? Colors.white : Colors.white70)),
+            ),
+          );
+        },
+      ),
+    );
+  }
+
+  void _pickEpisode(int e) {
+    setState(() => episode = e);
+    if (playing) UserData.addHistory(it, season: season, episode: episode);
+  }
+
+  Widget _episodeRow() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: [
+            Expanded(
+              child: Text('Episodes · $epCount',
+                  style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 15)),
+            ),
+            if (epCount > 6)
+              TextButton.icon(
+                onPressed: _allEpisodes,
+                icon: const Icon(Icons.grid_view_rounded, size: 16),
+                label: const Text('All'),
+                style: TextButton.styleFrom(foregroundColor: kRedLight, visualDensity: VisualDensity.compact),
+              ),
+          ],
+        ),
+        const SizedBox(height: 8),
+        SizedBox(
+          height: 74,
+          child: ListView.separated(
+            key: PageStorageKey('eps$season'),
+            scrollDirection: Axis.horizontal,
+            physics: const BouncingScrollPhysics(),
+            itemCount: epCount,
+            separatorBuilder: (_, __) => const SizedBox(width: 10),
+            itemBuilder: (_, i) {
+              final e = i + 1;
+              final sel = e == episode;
+              final name = i < epNames.length ? epNames[i] : '';
+              return GestureDetector(
+                onTap: () => _pickEpisode(e),
+                child: AnimatedContainer(
+                  duration: const Duration(milliseconds: 220),
+                  width: 132,
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: sel ? kRed.withOpacity(0.16) : kCard,
+                    borderRadius: BorderRadius.circular(16),
+                    border: Border.all(color: sel ? kRed : Colors.white10, width: sel ? 1.6 : 1),
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Row(children: [
+                        if (sel) const Padding(
+                          padding: EdgeInsets.only(right: 4),
+                          child: Icon(Icons.play_arrow_rounded, size: 18, color: kRedLight),
+                        ),
+                        Text('EP $e',
+                            style: TextStyle(
+                                fontWeight: FontWeight.w800, color: sel ? kRedLight : Colors.white, fontSize: 14)),
+                      ]),
+                      if (name.isNotEmpty) ...[
+                        const SizedBox(height: 3),
+                        Text(name,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: const TextStyle(fontSize: 11.5, color: Colors.white54)),
+                      ],
+                    ],
+                  ),
+                ),
+              );
+            },
+          ),
+        ),
+      ],
+    );
+  }
+
+  void _allEpisodes() {
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: kCard,
+      isScrollControlled: true,
+      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(24))),
+      builder: (ctx) => DraggableScrollableSheet(
+        expand: false,
+        initialChildSize: 0.6,
+        maxChildSize: 0.9,
+        builder: (_, sc) => Column(
+          children: [
+            const SizedBox(height: 10),
+            Container(width: 40, height: 4, decoration: BoxDecoration(color: Colors.white24, borderRadius: BorderRadius.circular(2))),
+            Padding(
+              padding: const EdgeInsets.all(16),
+              child: Align(
+                alignment: Alignment.centerLeft,
+                child: Text('Season $season · $epCount episodes',
+                    style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w800)),
+              ),
+            ),
+            Expanded(
+              child: GridView.builder(
+                controller: sc,
+                padding: const EdgeInsets.fromLTRB(16, 0, 16, 24),
+                gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                    crossAxisCount: 5, mainAxisSpacing: 10, crossAxisSpacing: 10),
+                itemCount: epCount,
+                itemBuilder: (_, i) {
+                  final e = i + 1;
+                  final sel = e == episode;
+                  return GestureDetector(
+                    onTap: () {
+                      Navigator.pop(ctx);
+                      _pickEpisode(e);
+                    },
+                    child: Container(
+                      alignment: Alignment.center,
+                      decoration: BoxDecoration(
+                        gradient: sel ? kRedGradient : null,
+                        color: sel ? null : kCard2,
+                        borderRadius: BorderRadius.circular(14),
+                      ),
+                      child: Text('$e', style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 16)),
+                    ),
+                  );
+                },
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  /// Titles that share genres with this one.
+  List<Item> get related {
+    final g = it['genres'];
+    final mine = g is List ? g.map((e) => '$e').toSet() : <String>{};
+    if (mine.isEmpty) return [];
+    int score(Item e) {
+      final x = e['genres'];
+      return x is List ? x.where((a) => mine.contains('$a')).length : 0;
+    }
+
+    final l = Store.content.value.where((e) => e['id'] != it['id'] && score(e) > 0).toList();
+    l.sort((a, b) => score(b).compareTo(score(a)));
+    return l.take(12).toList();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final sv = servers;
+    final idx = sv.isEmpty ? 0 : (serverIdx >= sv.length ? 0 : serverIdx);
+    final url = sv.isEmpty ? '' : sv[idx]['url']!;
+    final g = it['genres'];
+    final genres = g is List ? g.map((e) => '$e').toList() : <String>[];
+    final backdrop = '${it['backdrop'] ?? ''}'.isNotEmpty ? '${it['backdrop']}' : '${it['poster'] ?? ''}';
+    final rating = it['rating'] is num ? (it['rating'] as num).toDouble() : 0.0;
+    final imdb = '${omdb?['imdbRating'] ?? ''}';
+
+    return Scaffold(
+      body: SafeArea(
+        bottom: false,
+        child: ListView(
+          physics: const BouncingScrollPhysics(),
+          padding: const EdgeInsets.only(bottom: 32),
+          children: [
+            AspectRatio(
+              aspectRatio: 16 / 9,
+              child: Stack(
+                fit: StackFit.expand,
+                children: [
+                  if (playing && url.isNotEmpty)
+                    PlayerView(key: ValueKey(url), url: url)
+                  else ...[
+                    Img(backdrop),
+                    const DecoratedBox(
+                      decoration: BoxDecoration(
+                        gradient: LinearGradient(
+                          begin: Alignment.topCenter,
+                          end: Alignment.bottomCenter,
+                          colors: [Color(0x66000000), Colors.transparent, kBg],
+                          stops: [0, 0.4, 1],
+                        ),
+                      ),
+                    ),
+                    Center(
+                      child: GestureDetector(
+                        onTap: _play,
+                        child: Container(
+                          width: 68,
+                          height: 68,
+                          decoration: BoxDecoration(
+                            gradient: kRedGradient,
+                            shape: BoxShape.circle,
+                            border: Border.all(color: Colors.white24, width: 2),
+                            boxShadow: [BoxShadow(color: kRed.withOpacity(0.55), blurRadius: 28)],
+                          ),
+                          child: const Icon(Icons.play_arrow_rounded, size: 42),
+                        ),
+                      ),
+                    ),
+                  ],
+                  Positioned(
+                    top: 8,
+                    left: 8,
+                    child: Material(
+                      color: Colors.black54,
+                      shape: const CircleBorder(),
+                      child: IconButton(
+                        icon: const Icon(Icons.arrow_back_rounded),
+                        onPressed: () => Navigator.pop(context),
+                      ),
+                    ),
+                  ),
+                  Positioned(
+                    top: 8,
+                    right: 8,
+                    child: Material(
+                      color: Colors.black54,
+                      shape: const CircleBorder(),
+                      child: IconButton(
+                        tooltip: 'Cast to TV',
+                        icon: const Icon(Icons.cast_rounded),
+                        onPressed: _cast,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 14, 16, 0),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text('${it['title'] ?? ''}',
+                      style: const TextStyle(fontSize: 24, fontWeight: FontWeight.w800, height: 1.15)),
+                  const SizedBox(height: 12),
+                  Wrap(
+                    spacing: 8,
+                    runSpacing: 8,
+                    children: [
+                      if ('${it['year'] ?? ''}'.isNotEmpty) _pill('${it['year']}'),
+                      if (rating > 0)
+                        _pill('TMDB ${rating.toStringAsFixed(1)}', icon: Icons.star_rounded, color: Colors.amber),
+                      if (imdb.isNotEmpty && imdb != 'N/A')
+                        _pill('IMDb $imdb', icon: Icons.star_rounded, color: Colors.amber),
+                      if ('${omdb?['Runtime'] ?? ''}'.isNotEmpty && omdb?['Runtime'] != 'N/A')
+                        _pill('${omdb?['Runtime']}', icon: Icons.schedule_rounded, color: Colors.white54),
+                      if ('${omdb?['Rated'] ?? ''}'.isNotEmpty && omdb?['Rated'] != 'N/A')
+                        _pill('${omdb?['Rated']}'),
+                      for (final x in genres) _pill(x),
+                    ],
+                  ),
+                  const SizedBox(height: 18),
+                  _actions(),
+                  if (isTv && tmdbId.isNotEmpty) ...[
+                    const SizedBox(height: 20),
+                    _seasonRow(),
+                    const SizedBox(height: 14),
+                    _episodeRow(),
+                    if (playing && episode < epCount) ...[
+                      const SizedBox(height: 10),
+                      OutlinedButton.icon(
+                        onPressed: () => _pickEpisode(episode + 1),
+                        icon: const Icon(Icons.skip_next_rounded),
+                        label: const Text('Next episode'),
+                        style: OutlinedButton.styleFrom(
+                          foregroundColor: Colors.white,
+                          side: const BorderSide(color: Colors.white24),
+                          shape: const StadiumBorder(),
+                        ),
+                      ),
+                    ],
+                  ],
+                  const SizedBox(height: 18),
+                  if (sv.isEmpty)
+                    const Text('No server available for this title yet.',
+                        style: TextStyle(color: Colors.white54))
+                  else ...[
+                    const Text('Servers', style: TextStyle(fontWeight: FontWeight.w800, fontSize: 15)),
+                    const SizedBox(height: 8),
+                    Wrap(
+                      spacing: 8,
+                      runSpacing: 4,
+                      children: [
+                        for (var i = 0; i < sv.length; i++)
+                          ChoiceChip(
+                            avatar: Icon(Icons.dns_rounded, size: 16, color: i == idx ? Colors.white : Colors.white54),
+                            label: Text(sv[i]['name']!),
+                            selected: i == idx,
+                            showCheckmark: false,
+                            selectedColor: kRed,
+                            backgroundColor: kCard,
+                            side: BorderSide.none,
+                            shape: const StadiumBorder(),
+                            onSelected: (_) => setState(() => serverIdx = i),
+                          ),
+                      ],
+                    ),
+                  ],
+                  if (!playing && sv.isNotEmpty) ...[
+                    const SizedBox(height: 16),
+                    SizedBox(
+                      width: double.infinity,
+                      child: GradientButton(
+                        icon: Icons.play_arrow_rounded,
+                        label: isTv ? 'Play S$season · E$episode' : 'Play',
+                        onTap: _play,
+                      ),
+                    ),
+                  ],
+                  if ('${it['overview'] ?? ''}'.isNotEmpty) ...[
+                    const SizedBox(height: 20),
+                    const Text('Overview', style: TextStyle(fontWeight: FontWeight.w800, fontSize: 15)),
+                    const SizedBox(height: 6),
+                    _Overview('${it['overview']}'),
+                  ],
+                ],
+              ),
+            ),
+            const AdBanner('detail'),
+            hRow(context, 'More like this', related),
+          ],
+        ),
+      ),
+    );
+  }
+
+  void _play() {
+    if (servers.isEmpty) {
+      ScaffoldMessenger.of(context)
+          .showSnackBar(const SnackBar(content: Text('No server available for this title yet.')));
+      return;
+    }
+    setState(() => playing = true);
+    UserData.addHistory(it, season: season, episode: episode);
+  }
+}
+
+class _Overview extends StatefulWidget {
+  final String text;
+  const _Overview(this.text);
+
+  @override
+  State<_Overview> createState() => _OverviewState();
+}
+
+class _OverviewState extends State<_Overview> {
+  bool open = false;
+
+  @override
+  Widget build(BuildContext context) {
+    const style = TextStyle(color: Colors.white70, height: 1.5);
+    return LayoutBuilder(
+      builder: (_, box) {
+        final tp = TextPainter(
+          text: TextSpan(text: widget.text, style: style),
+          maxLines: 4,
+          textDirection: TextDirection.ltr,
+        )..layout(maxWidth: box.maxWidth);
+        final long = tp.didExceedMaxLines;
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            AnimatedSize(
+              duration: const Duration(milliseconds: 220),
+              curve: Curves.easeOut,
+              alignment: Alignment.topCenter,
+              child: Text(
+                widget.text,
+                style: style,
+                maxLines: open ? null : 4,
+                overflow: open ? TextOverflow.visible : TextOverflow.ellipsis,
+              ),
+            ),
+            if (long)
+              GestureDetector(
+                onTap: () => setState(() => open = !open),
+                child: Padding(
+                  padding: const EdgeInsets.only(top: 6),
+                  child: Text(open ? 'Show less' : 'Read more',
+                      style: const TextStyle(color: kRedLight, fontWeight: FontWeight.w700)),
+                ),
+              ),
+          ],
+        );
+      },
+    );
+  }
+}
+
+/// Embedded player. Blocks pop-up style redirects to other sites once the
+/// player page has finished loading.
+class PlayerView extends StatefulWidget {
+  final String url;
+  const PlayerView({super.key, required this.url});
+
+  @override
+  State<PlayerView> createState() => _PlayerViewState();
+}
+
+class _PlayerViewState extends State<PlayerView> {
+  late final WebViewController c;
+  bool loading = true;
+  bool loaded = false;
+
+  String _root(String h) {
+    final p = h.split('.');
+    return p.length >= 2 ? p.sublist(p.length - 2).join('.') : h;
+  }
+
+  @override
+  void initState() {
+    super.initState();
+    final base = _root(Uri.tryParse(widget.url)?.host ?? '');
+    c = WebViewController()
+      ..setJavaScriptMode(JavaScriptMode.unrestricted)
+      ..setBackgroundColor(Colors.black)
+      ..setNavigationDelegate(NavigationDelegate(
+        onPageFinished: (_) {
+          loaded = true;
+          if (mounted) setState(() => loading = false);
+        },
+        onNavigationRequest: (r) {
+          if (!loaded || !r.isMainFrame) return NavigationDecision.navigate;
+          final u = Uri.tryParse(r.url);
+          if (u == null) return NavigationDecision.prevent;
+          if (u.scheme == 'about' || u.scheme == 'data' || _root(u.host) == base) {
+            return NavigationDecision.navigate;
+          }
+          return NavigationDecision.prevent;
+        },
+      ));
+    final lower = widget.url.toLowerCase().split('?').first;
+    if (lower.endsWith('.mp4') || lower.endsWith('.webm')) {
+      c.loadHtmlString(
+          '<html><body style="margin:0;background:#000"><video src="${widget.url}" controls autoplay playsinline style="width:100%;height:100%"></video></body></html>');
+    } else {
+      c.loadRequest(Uri.parse(widget.url));
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Stack(
+      fit: StackFit.expand,
+      children: [
+        WebViewWidget(controller: c),
+        if (loading) const Center(child: CircularProgressIndicator()),
+      ],
+    );
+  }
+}
+
+########## FILE: lib/userdata.dart ##########
+import 'dart:async';
+
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:flutter/foundation.dart';
+
+import 'store.dart';
+
+/// Per-user data: likes, favorites, watchlist, watch history.
+/// Stored under users/{uid}/{likes|favorites|watchlist|history}/{contentId}.
+class UserData {
+  static final likes = ValueNotifier<Map<String, Item>>({});
+  static final favorites = ValueNotifier<Map<String, Item>>({});
+  static final watchlist = ValueNotifier<Map<String, Item>>({});
+  static final history = ValueNotifier<Map<String, Item>>({});
+  static final profile = ValueNotifier<Item>({});
+
+  static final List<StreamSubscription> _subs = [];
+  static String? _uid;
+
+  static DocumentReference<Map<String, dynamic>>? get _me =>
+      _uid == null ? null : db.collection('users').doc(_uid);
+
+  static void start() {
+    final u = FirebaseAuth.instance.currentUser;
+    if (u == null || _uid == u.uid) return;
+    stop();
+    _uid = u.uid;
+    final me = _me!;
+    _listen('likes', likes);
+    _listen('favorites', favorites);
+    _listen('watchlist', watchlist);
+    _listen('history', history);
+    _subs.add(me.snapshots().listen((d) => profile.value = d.data() ?? {}, onError: (_) {}));
+  }
+
+  static void _listen(String name, ValueNotifier<Map<String, Item>> n) {
+    _subs.add(_me!.collection(name).snapshots().listen((s) {
+      n.value = {for (final d in s.docs) d.id: <String, dynamic>{...d.data(), 'id': d.id}};
+    }, onError: (_) {}));
+  }
+
+  static void stop() {
+    for (final s in _subs) {
+      s.cancel();
+    }
+    _subs.clear();
+    _uid = null;
+    likes.value = {};
+    favorites.value = {};
+    watchlist.value = {};
+    history.value = {};
+    profile.value = {};
+  }
+
+  /// Small snapshot of a title, enough to draw a card without the content list.
+  static Map<String, dynamic> _snap(Item it) => {
+        'title': it['title'],
+        'poster': it['poster'],
+        'backdrop': it['backdrop'],
+        'type': it['type'],
+        'year': it['year'],
+        'rating': it['rating'],
+      };
+
+  static Future<void> _toggle(String col, Item it, bool on) async {
+    final me = _me;
+    if (me == null) return;
+    final ref = me.collection(col).doc('${it['id']}');
+    if (on) {
+      await ref.delete();
+    } else {
+      await ref.set({..._snap(it), 'at': FieldValue.serverTimestamp()});
+    }
+  }
+
+  static bool isLiked(Item it) => likes.value.containsKey('${it['id']}');
+  static bool isFav(Item it) => favorites.value.containsKey('${it['id']}');
+  static bool inList(Item it) => watchlist.value.containsKey('${it['id']}');
+
+  static Future<void> toggleLike(Item it) => _toggle('likes', it, isLiked(it));
+  static Future<void> toggleFav(Item it) => _toggle('favorites', it, isFav(it));
+  static Future<void> toggleList(Item it) => _toggle('watchlist', it, inList(it));
+
+  /// Called when playback starts / the episode changes.
+  static Future<void> addHistory(Item it, {int season = 1, int episode = 1}) async {
+    final me = _me;
+    if (me == null) return;
+    try {
+      await me.collection('history').doc('${it['id']}').set({
+        ..._snap(it),
+        'season': season,
+        'episode': episode,
+        'at': FieldValue.serverTimestamp(),
+      });
+    } catch (_) {}
+  }
+
+  static Future<void> removeHistory(String id) async => _me?.collection('history').doc(id).delete();
+
+  static Future<void> clearHistory() async {
+    final me = _me;
+    if (me == null) return;
+    final s = await me.collection('history').get();
+    final b = db.batch();
+    for (final d in s.docs) {
+      b.delete(d.reference);
+    }
+    await b.commit();
+  }
+
+  static Future<void> saveProfile(Map<String, dynamic> m) async =>
+      _me?.set(m, SetOptions(merge: true));
+
+  static int _ms(Item m) {
+    final t = m['at'];
+    return t is Timestamp ? t.millisecondsSinceEpoch : DateTime.now().millisecondsSinceEpoch;
+  }
+
+  /// Newest first.
+  static List<Item> sorted(Map<String, Item> m) {
+    final l = m.values.toList();
+    l.sort((a, b) => _ms(b).compareTo(_ms(a)));
+    return l;
+  }
+
+  /// Full content item if it still exists, else the saved snapshot.
+  static Item resolve(Item saved) {
+    final full = Store.content.value.where((e) => e['id'] == saved['id']).firstOrNull;
+    return full ?? saved;
+  }
+}
+
+########## FILE: lib/library.dart ##########
+import 'package:flutter/material.dart';
+
+import 'store.dart';
+import 'theme.dart';
+import 'userdata.dart';
+import 'widgets.dart';
+
+enum LibKind { history, watchlist, favorites, likes }
+
+extension on LibKind {
+  String get title => switch (this) {
+        LibKind.history => 'Watch history',
+        LibKind.watchlist => 'Watchlist',
+        LibKind.favorites => 'Favorites',
+        LibKind.likes => 'Liked',
+      };
+  IconData get icon => switch (this) {
+        LibKind.history => Icons.history_rounded,
+        LibKind.watchlist => Icons.bookmark_rounded,
+        LibKind.favorites => Icons.favorite_rounded,
+        LibKind.likes => Icons.thumb_up_rounded,
+      };
+  ValueNotifier<Map<String, Item>> get source => switch (this) {
+        LibKind.history => UserData.history,
+        LibKind.watchlist => UserData.watchlist,
+        LibKind.favorites => UserData.favorites,
+        LibKind.likes => UserData.likes,
+      };
+  String get empty => switch (this) {
+        LibKind.history => 'Nothing watched yet',
+        LibKind.watchlist => 'Your watchlist is empty',
+        LibKind.favorites => 'No favorites yet',
+        LibKind.likes => 'No liked titles yet',
+      };
+}
+
+class LibraryScreen extends StatelessWidget {
+  final LibKind kind;
+  const LibraryScreen({super.key, required this.kind});
+
+  Future<void> _clear(BuildContext context) async {
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: kCard,
+        title: const Text('Clear history?'),
+        content: const Text('This removes everything you have watched.'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
+          TextButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('Clear')),
+        ],
+      ),
+    );
+    if (ok == true) await UserData.clearHistory();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        title: Text(kind.title, style: const TextStyle(fontWeight: FontWeight.w800)),
+        actions: [
+          if (kind == LibKind.history)
+            IconButton(
+              tooltip: 'Clear all',
+              icon: const Icon(Icons.delete_sweep_rounded),
+              onPressed: () => _clear(context),
+            ),
+        ],
+      ),
+      body: ValueListenableBuilder<Map<String, Item>>(
+        valueListenable: kind.source,
+        builder: (_, map, __) {
+          final list = UserData.sorted(map);
+          if (list.isEmpty) {
+            return Center(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(kind.icon, size: 56, color: Colors.white24),
+                  const SizedBox(height: 12),
+                  Text(kind.empty, style: const TextStyle(color: Colors.white54, fontSize: 15)),
+                ],
+              ),
+            );
+          }
+          if (kind == LibKind.history) return _historyList(context, list);
+          return posterGrid([for (final e in list) UserData.resolve(e)]);
+        },
+      ),
+    );
+  }
+
+  Widget _historyList(BuildContext context, List<Item> list) {
+    return ListView.separated(
+      padding: const EdgeInsets.all(16),
+      itemCount: list.length,
+      separatorBuilder: (_, __) => const SizedBox(height: 10),
+      itemBuilder: (_, i) => HistoryTile(item: list[i], onRemove: () => UserData.removeHistory('${list[i]['id']}')),
+    );
+  }
+}
+
+/// Wide card used for history and "Continue watching".
+class HistoryTile extends StatelessWidget {
+  final Item item;
+  final VoidCallback? onRemove;
+  final bool big;
+  const HistoryTile({super.key, required this.item, this.onRemove, this.big = false});
+
+  @override
+  Widget build(BuildContext context) {
+    final isTv = item['type'] == 'tv';
+    final img = '${item['backdrop'] ?? ''}'.isNotEmpty ? '${item['backdrop']}' : '${item['poster'] ?? ''}';
+    final sub = isTv ? 'Season ${item['season'] ?? 1} · Episode ${item['episode'] ?? 1}' : 'Movie';
+    return Material(
+      color: kCard,
+      borderRadius: BorderRadius.circular(16),
+      clipBehavior: Clip.antiAlias,
+      child: InkWell(
+        onTap: () => openItem(context, UserData.resolve(item)),
+        child: Row(
+          children: [
+            SizedBox(
+              width: big ? 150 : 120,
+              height: big ? 90 : 72,
+              child: Stack(
+                fit: StackFit.expand,
+                children: [
+                  Img(img),
+                  const Center(child: Icon(Icons.play_circle_fill_rounded, color: Colors.white70, size: 30)),
+                ],
+              ),
+            ),
+            Expanded(
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 12),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Text('${item['title'] ?? ''}',
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 15)),
+                    const SizedBox(height: 4),
+                    Text(sub, style: const TextStyle(color: kRedLight, fontSize: 12.5, fontWeight: FontWeight.w600)),
+                  ],
+                ),
+              ),
+            ),
+            if (onRemove != null)
+              IconButton(
+                icon: const Icon(Icons.close_rounded, color: Colors.white38),
+                onPressed: onRemove,
+              ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+########## FILE: lib/logo_data.dart ##########
+import 'dart:convert';
+import 'dart:typed_data';
+
+import 'package:flutter/material.dart';
+
+/// App logo embedded in code so it always shows (no asset file needed).
+final Uint8List kLogoBytes = base64Decode(_b64);
+
+class Logo extends StatelessWidget {
+  final double size;
+  final double radius;
+  const Logo({super.key, this.size = 96, this.radius = 24});
+
+  @override
+  Widget build(BuildContext context) => ClipRRect(
+        borderRadius: BorderRadius.circular(radius),
+        child: Image.memory(kLogoBytes, width: size, height: size, fit: BoxFit.cover, gaplessPlayback: true),
+      );
+}
+
+const String _b64 =
+    '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';
+
