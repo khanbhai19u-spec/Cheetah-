@@ -21,8 +21,31 @@ jobs:
           channel: stable
           cache: true
 
-      # The repo only holds lib/, assets/ and pubspec.yaml.
-      # The Android project (package com.cheetahapp) is generated here.
+      - name: Unpack bundle into project files
+        run: |
+          python3 - <<'PY'
+          import re, glob, os
+          def key(f):
+              return [int(x) if x.isdigit() else x for x in re.split(r'(\d+)', f)]
+          found = sorted(glob.glob('cheetah-github-bundle*.txt'), key=key)
+          if not found:
+              raise SystemExit('No cheetah-github-bundle*.txt file in the repo')
+          src = found[-1]
+          print('Using', src)
+          text = open(src, encoding='utf-8').read()
+          parts = re.split(r'(?m)^########## FILE: (.+?) ##########\n', text)
+          n = 0
+          for i in range(1, len(parts), 2):
+              name = parts[i].strip()
+              if name.startswith('.github/'):
+                  continue
+              os.makedirs(os.path.dirname(name) or '.', exist_ok=True)
+              open(name, 'w', encoding='utf-8').write(parts[i + 1].rstrip() + '\n')
+              n += 1
+          print('Wrote', n, 'files')
+          PY
+          ls lib
+
       - name: Generate Android project
         run: |
           cp -r lib /tmp/lib_bak
@@ -55,4 +78,3 @@ jobs:
         with:
           name: Cheetah-APK
           path: build/app/outputs/flutter-apk/app-release.apk
-
