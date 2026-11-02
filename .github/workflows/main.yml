@@ -1,0 +1,58 @@
+name: Build Cheetah APK
+
+on:
+  push:
+    branches: [main, master]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+
+      # The repo only holds lib/, assets/ and pubspec.yaml.
+      # The Android project (package com.cheetahapp) is generated here.
+      - name: Generate Android project
+        run: |
+          cp -r lib /tmp/lib_bak
+          flutter create . --org com --project-name cheetahapp --platforms android
+          rm -rf lib && cp -r /tmp/lib_bak lib
+
+      - name: Patch Android config
+        run: |
+          sed -i 's/minSdk = flutter.minSdkVersion/minSdk = 23/; s/minSdkVersion flutter.minSdkVersion/minSdkVersion 23/' android/app/build.gradle* || true
+          M=android/app/src/main/AndroidManifest.xml
+          sed -i 's#<application#<uses-permission android:name="android.permission.INTERNET"/>\n    <uses-permission android:name="android.permission.POST_NOTIFICATIONS"/>\n    <application android:usesCleartextTraffic="true"#' $M
+          sed -i 's/android:label="[^"]*"/android:label="Cheetah"/' $M
+
+      - name: Make app icon from lib/logo_data.dart
+        run: |
+          mkdir -p assets
+          grep -o "'[A-Za-z0-9+/=]\{40,\}'" lib/logo_data.dart | tr -d "'" | base64 -d > assets/icon.png
+          ls -la assets
+          test -s assets/icon.png || (echo 'icon missing' && exit 1)
+
+      - run: flutter pub get
+
+      - name: App icon
+        run: dart run flutter_launcher_icons
+
+      - name: Build release APK
+        run: flutter build apk --release
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Cheetah-APK
+          path: build/app/outputs/flutter-apk/app-release.apk
+
