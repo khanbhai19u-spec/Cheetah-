@@ -1,0 +1,95 @@
+name: Build APK
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Unpack bundle.txt into project files
+        run: |
+          python3 - <<'PYEOF'
+          import os, re
+          txt = open("bundle.txt", encoding="utf-8").read()
+          parts = re.split(r'^#### FILE: (.+)$', txt, flags=re.M)
+          for i in range(1, len(parts), 2):
+              path = parts[i].strip()
+              body = parts[i + 1].lstrip("\n").rstrip("\n") + "\n"
+              d = os.path.dirname(path)
+              if d:
+                  os.makedirs(d, exist_ok=True)
+              open(path, "w", encoding="utf-8").write(body)
+              print("wrote", path)
+          PYEOF
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+
+      - name: Create android folder if missing
+        run: |
+          if [ ! -d android ]; then
+            flutter create . --platforms=android --org com.cheetah
+          fi
+
+      - name: Copy google-services.json
+        run: |
+          cp google-services.json android/app/google-services.json
+          test -f android/app/google-services.json
+
+      - name: Patch Gradle for Firebase
+        run: |
+          cat > /tmp/patch.py <<'PYEOF'
+          import re, glob, os
+          os.chdir("android")
+          def rd(p): return open(p).read()
+          def wr(p, s): open(p, "w").write(s)
+
+          for p in glob.glob("settings.gradle*"):
+              s = rd(p)
+              if "google-services" not in s:
+                  kts = p.endswith(".kts")
+                  add = ('    id("com.google.gms.google-services") version "4.4.2" apply false'
+                         if kts else
+                         '    id "com.google.gms.google-services" version "4.4.2" apply false')
+                  s = re.sub(r'(\n[^\n]*com\.android\.application[^\n]*version[^\n]*)', r'\1\n' + add, s, count=1)
+                  wr(p, s)
+
+          for p in glob.glob("app/build.gradle*"):
+              s = rd(p)
+              kts = p.endswith(".kts")
+              if "google-services" not in s:
+                  add = ('    id("com.google.gms.google-services")' if kts
+                         else '    id "com.google.gms.google-services"')
+                  s = re.sub(r'(\n[^\n]*com\.android\.application[^\n]*)', r'\1\n' + add, s, count=1)
+              s = re.sub(r'(applicationId\s*=?\s*)"[^"]*"', r'\1"com.cheetahapp"', s)
+              s = re.sub(r'minSdk(Version)?(\s*=?\s*)flutter\.minSdkVersion', r'minSdk\1\g<2>23', s)
+              wr(p, s)
+
+          m = "app/src/main/AndroidManifest.xml"
+          s = rd(m)
+          if "android.permission.INTERNET" not in s:
+              s = s.replace("<application", '<uses-permission android:name="android.permission.INTERNET"/>\n    <application', 1)
+              wr(m, s)
+          PYEOF
+          python3 /tmp/patch.py
+
+      - run: flutter pub get
+
+      - run: flutter build apk --release
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: cheetah-bd-apk
+          path: build/app/outputs/flutter-apk/app-release.apk
