@@ -1,0 +1,484 @@
+#### FILE: pubspec.yaml
+name: cheetah_bd
+description: Modern movie & series app
+publish_to: none
+version: 1.0.0+1
+environment:
+  sdk: ">=3.0.0 <4.0.0"
+dependencies:
+  flutter:
+    sdk: flutter
+  firebase_core: ^3.6.0
+  firebase_auth: ^5.3.1
+  cloud_firestore: ^5.4.4
+  http: ^1.2.2
+  webview_flutter: ^4.9.0
+  cached_network_image: ^3.4.1
+  shared_preferences: ^2.3.2
+  video_player: ^2.9.1
+  chewie: ^1.8.5
+  url_launcher: ^6.3.0
+flutter:
+  uses-material-design: true
+
+#### FILE: lib/main.dart
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:firebase_core/firebase_core.dart';
+import 'package:flutter/material.dart';
+import 'home.dart';
+import 'login.dart';
+
+Future<void> main() async {
+  WidgetsFlutterBinding.ensureInitialized();
+  await Firebase.initializeApp();
+  runApp(const CheetahApp());
+}
+
+class CheetahApp extends StatelessWidget {
+  const CheetahApp({super.key});
+  @override
+  Widget build(BuildContext context) => MaterialApp(
+        title: 'Cheetah BD',
+        debugShowCheckedModeBanner: false,
+        theme: ThemeData.dark(useMaterial3: true).copyWith(
+          scaffoldBackgroundColor: const Color(0xFF0B0B10),
+          colorScheme: const ColorScheme.dark(primary: Color(0xFFFF7A18)),
+        ),
+        home: StreamBuilder<User?>(
+          stream: FirebaseAuth.instance.authStateChanges(),
+          builder: (_, s) => s.hasData ? const HomePage() : const LoginPage(),
+        ),
+      );
+}
+
+#### FILE: lib/services.dart
+import 'dart:convert';
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:http/http.dart' as http;
+
+// তোমার Vercel লিংক এখানে বসাও
+const kApiBase = 'https://cheetah-bd.vercel.app/api/get-link';
+
+class Server {
+  final String name, url;
+  Server(this.name, this.url);
+}
+
+class Content {
+  final String id, title, type, poster, backdrop, overview, category, trailer, year;
+  final double rating;
+  final List<Server> servers;
+  Content.fromDoc(DocumentSnapshot d)
+      : id = d.id,
+        title = (d['title'] ?? '').toString(),
+        type = (d.data() as Map)['type']?.toString() ?? 'movie',
+        poster = (d.data() as Map)['poster']?.toString() ?? '',
+        backdrop = (d.data() as Map)['backdrop']?.toString() ?? '',
+        overview = (d.data() as Map)['overview']?.toString() ?? '',
+        category = (d.data() as Map)['category']?.toString() ?? 'Latest',
+        trailer = (d.data() as Map)['trailer']?.toString() ?? '',
+        year = (d.data() as Map)['year']?.toString() ?? '',
+        rating = ((d.data() as Map)['rating'] ?? 0).toDouble(),
+        servers = (((d.data() as Map)['servers'] ?? []) as List)
+            .map((e) => Server(e['name'].toString(), e['url'].toString()))
+            .toList();
+}
+
+class Api {
+  static Stream<List<Content>> content() => FirebaseFirestore.instance
+      .collection('content')
+      .snapshots()
+      .map((s) => s.docs.map(Content.fromDoc).toList());
+
+  /// এমবেড/থার্ড-পার্টি লিংক -> ডাইরেক্ট mp4/m3u8
+  static Future<String?> resolve(String url) async {
+    if (url.contains('.mp4') || url.contains('.m3u8')) return url;
+    try {
+      final r = await http
+          .get(Uri.parse('$kApiBase?url=${Uri.encodeComponent(url)}'))
+          .timeout(const Duration(seconds: 30));
+      if (r.statusCode != 200) return null;
+      return jsonDecode(r.body)['url'] as String?;
+    } catch (_) {
+      return null;
+    }
+  }
+}
+
+#### FILE: lib/login.dart
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:flutter/material.dart';
+
+class LoginPage extends StatefulWidget {
+  const LoginPage({super.key});
+  @override
+  State<LoginPage> createState() => _LoginPageState();
+}
+
+class _LoginPageState extends State<LoginPage> {
+  final email = TextEditingController(), pass = TextEditingController();
+  bool signup = false, busy = false;
+
+  Future<void> submit() async {
+    setState(() => busy = true);
+    try {
+      final a = FirebaseAuth.instance;
+      signup
+          ? await a.createUserWithEmailAndPassword(email: email.text.trim(), password: pass.text)
+          : await a.signInWithEmailAndPassword(email: email.text.trim(), password: pass.text);
+    } on FirebaseAuthException catch (e) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.message ?? 'Error')));
+    }
+    if (mounted) setState(() => busy = false);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final c = Theme.of(context).colorScheme.primary;
+    return Scaffold(
+      body: Container(
+        decoration: const BoxDecoration(
+          gradient: LinearGradient(begin: Alignment.topCenter, end: Alignment.bottomCenter,
+              colors: [Color(0xFF2A1405), Color(0xFF0B0B10)]),
+        ),
+        child: Center(
+          child: SingleChildScrollView(
+            padding: const EdgeInsets.all(28),
+            child: Column(children: [
+              Icon(Icons.bolt_rounded, size: 64, color: c),
+              const SizedBox(height: 8),
+              const Text('CHEETAH BD', style: TextStyle(fontSize: 28, fontWeight: FontWeight.w800, letterSpacing: 3)),
+              const SizedBox(height: 32),
+              TextField(controller: email, keyboardType: TextInputType.emailAddress, decoration: _d('Email', Icons.mail_outline)),
+              const SizedBox(height: 14),
+              TextField(controller: pass, obscureText: true, decoration: _d('Password', Icons.lock_outline)),
+              const SizedBox(height: 22),
+              SizedBox(
+                width: double.infinity, height: 50,
+                child: FilledButton(
+                  onPressed: busy ? null : submit,
+                  style: FilledButton.styleFrom(shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14))),
+                  child: busy ? const SizedBox(height: 20, width: 20, child: CircularProgressIndicator(strokeWidth: 2)) : Text(signup ? 'Create account' : 'Login'),
+                ),
+              ),
+              TextButton(onPressed: () => setState(() => signup = !signup),
+                  child: Text(signup ? 'Already have an account? Login' : 'New here? Sign up')),
+            ]),
+          ),
+        ),
+      ),
+    );
+  }
+
+  InputDecoration _d(String h, IconData i) => InputDecoration(
+        hintText: h, prefixIcon: Icon(i), filled: true, fillColor: Colors.white10,
+        border: OutlineInputBorder(borderRadius: BorderRadius.circular(14), borderSide: BorderSide.none),
+      );
+}
+
+#### FILE: lib/home.dart
+import 'package:cached_network_image/cached_network_image.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:flutter/material.dart';
+import 'detail.dart';
+import 'services.dart';
+
+class HomePage extends StatefulWidget {
+  const HomePage({super.key});
+  @override
+  State<HomePage> createState() => _HomePageState();
+}
+
+class _HomePageState extends State<HomePage> {
+  String q = '';
+  String filter = 'All';
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      body: SafeArea(
+        child: StreamBuilder<List<Content>>(
+          stream: Api.content(),
+          builder: (_, s) {
+            if (!s.hasData) return const Center(child: CircularProgressIndicator());
+            var list = s.data!;
+            if (filter != 'All') list = list.where((c) => c.type == filter.toLowerCase()).toList();
+            if (q.isNotEmpty) list = list.where((c) => c.title.toLowerCase().contains(q.toLowerCase())).toList();
+            final groups = <String, List<Content>>{};
+            for (final c in list) {
+              groups.putIfAbsent(c.category, () => []).add(c);
+            }
+            return CustomScrollView(slivers: [
+              SliverToBoxAdapter(child: _header()),
+              if (list.isNotEmpty && q.isEmpty) SliverToBoxAdapter(child: _hero(list.first)),
+              if (list.isEmpty) const SliverFillRemaining(child: Center(child: Text('Nothing found'))),
+              for (final e in groups.entries) ...[
+                SliverToBoxAdapter(
+                  child: Padding(
+                    padding: const EdgeInsets.fromLTRB(16, 22, 16, 10),
+                    child: Text(e.key, style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w700)),
+                  ),
+                ),
+                SliverToBoxAdapter(
+                  child: SizedBox(
+                    height: 210,
+                    child: ListView.separated(
+                      scrollDirection: Axis.horizontal,
+                      padding: const EdgeInsets.symmetric(horizontal: 16),
+                      itemCount: e.value.length,
+                      separatorBuilder: (_, __) => const SizedBox(width: 12),
+                      itemBuilder: (_, i) => _card(e.value[i]),
+                    ),
+                  ),
+                ),
+              ],
+              const SliverToBoxAdapter(child: SizedBox(height: 40)),
+            ]);
+          },
+        ),
+      ),
+    );
+  }
+
+  Widget _header() => Padding(
+        padding: const EdgeInsets.fromLTRB(16, 12, 8, 0),
+        child: Column(children: [
+          Row(children: [
+            Icon(Icons.bolt_rounded, color: Theme.of(context).colorScheme.primary),
+            const SizedBox(width: 6),
+            const Text('CHEETAH', style: TextStyle(fontWeight: FontWeight.w800, letterSpacing: 2, fontSize: 18)),
+            const Spacer(),
+            IconButton(icon: const Icon(Icons.logout), onPressed: () => FirebaseAuth.instance.signOut()),
+          ]),
+          TextField(
+            onChanged: (v) => setState(() => q = v),
+            decoration: InputDecoration(
+              hintText: 'Search movies & series', prefixIcon: const Icon(Icons.search),
+              filled: true, fillColor: Colors.white10, contentPadding: EdgeInsets.zero,
+              border: OutlineInputBorder(borderRadius: BorderRadius.circular(14), borderSide: BorderSide.none),
+            ),
+          ),
+          const SizedBox(height: 10),
+          Row(children: [
+            for (final f in ['All', 'Movie', 'Series'])
+              Padding(
+                padding: const EdgeInsets.only(right: 8),
+                child: ChoiceChip(label: Text(f), selected: filter == f, onSelected: (_) => setState(() => filter = f)),
+              ),
+          ]),
+        ]),
+      );
+
+  Widget _hero(Content c) => GestureDetector(
+        onTap: () => _open(c),
+        child: Container(
+          margin: const EdgeInsets.fromLTRB(16, 14, 16, 0),
+          height: 210,
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(20),
+            image: DecorationImage(
+              image: CachedNetworkImageProvider(c.backdrop.isNotEmpty ? c.backdrop : c.poster),
+              fit: BoxFit.cover,
+            ),
+          ),
+          child: Container(
+            padding: const EdgeInsets.all(16),
+            alignment: Alignment.bottomLeft,
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(20),
+              gradient: const LinearGradient(begin: Alignment.topCenter, end: Alignment.bottomCenter,
+                  colors: [Colors.transparent, Colors.black87]),
+            ),
+            child: Text(c.title, maxLines: 2, style: const TextStyle(fontSize: 22, fontWeight: FontWeight.w800)),
+          ),
+        ),
+      );
+
+  Widget _card(Content c) => GestureDetector(
+        onTap: () => _open(c),
+        child: SizedBox(
+          width: 120,
+          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Expanded(
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(14),
+                child: CachedNetworkImage(
+                  imageUrl: c.poster, width: 120, fit: BoxFit.cover,
+                  placeholder: (_, __) => Container(color: Colors.white10),
+                  errorWidget: (_, __, ___) => Container(color: Colors.white10, child: const Icon(Icons.movie)),
+                ),
+              ),
+            ),
+            const SizedBox(height: 6),
+            Text(c.title, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 13)),
+          ]),
+        ),
+      );
+
+  void _open(Content c) => Navigator.push(context, MaterialPageRoute(builder: (_) => DetailPage(c: c)));
+}
+
+#### FILE: lib/detail.dart
+import 'package:cached_network_image/cached_network_image.dart';
+import 'package:flutter/material.dart';
+import 'package:url_launcher/url_launcher.dart';
+import 'player.dart';
+import 'services.dart';
+
+class DetailPage extends StatelessWidget {
+  final Content c;
+  const DetailPage({super.key, required this.c});
+
+  Future<void> _go(BuildContext ctx, Server s, {required bool download}) async {
+    showDialog(context: ctx, barrierDismissible: false,
+        builder: (_) => const Center(child: CircularProgressIndicator()));
+    final link = await Api.resolve(s.url); // Vercel API call
+    if (!ctx.mounted) return;
+    Navigator.pop(ctx);
+    if (link == null) {
+      ScaffoldMessenger.of(ctx).showSnackBar(const SnackBar(content: Text('Link পাওয়া যায়নি, অন্য সার্ভার ট্রাই করো')));
+      return;
+    }
+    if (download) {
+      await launchUrl(Uri.parse(link), mode: LaunchMode.externalApplication);
+    } else {
+      Navigator.push(ctx, MaterialPageRoute(builder: (_) => PlayerView(url: link, title: c.title)));
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      body: CustomScrollView(slivers: [
+        SliverAppBar(
+          expandedHeight: 320, pinned: true,
+          flexibleSpace: FlexibleSpaceBar(
+            background: Stack(fit: StackFit.expand, children: [
+              CachedNetworkImage(imageUrl: c.backdrop.isNotEmpty ? c.backdrop : c.poster, fit: BoxFit.cover),
+              const DecoratedBox(
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(begin: Alignment.topCenter, end: Alignment.bottomCenter,
+                      colors: [Colors.transparent, Color(0xFF0B0B10)]),
+                ),
+              ),
+            ]),
+          ),
+        ),
+        SliverPadding(
+          padding: const EdgeInsets.all(16),
+          sliver: SliverList(
+            delegate: SliverChildListDelegate([
+              Text(c.title, style: const TextStyle(fontSize: 26, fontWeight: FontWeight.w800)),
+              const SizedBox(height: 8),
+              Row(children: [
+                const Icon(Icons.star_rounded, color: Colors.amber, size: 18),
+                Text(' ${c.rating.toStringAsFixed(1)}   •   ${c.year}   •   ${c.type.toUpperCase()}',
+                    style: const TextStyle(color: Colors.white70)),
+              ]),
+              const SizedBox(height: 14),
+              Text(c.overview, style: const TextStyle(height: 1.5, color: Colors.white70)),
+              const SizedBox(height: 22),
+              const Text('Servers', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700)),
+              const SizedBox(height: 10),
+              if (c.servers.isEmpty) const Text('No server added yet'),
+              for (final s in c.servers)
+                Container(
+                  margin: const EdgeInsets.only(bottom: 10),
+                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
+                  decoration: BoxDecoration(color: Colors.white10, borderRadius: BorderRadius.circular(14)),
+                  child: Row(children: [
+                    const Icon(Icons.dns_rounded, size: 20),
+                    const SizedBox(width: 10),
+                    Expanded(child: Text(s.name)),
+                    IconButton(icon: const Icon(Icons.download_rounded), onPressed: () => _go(context, s, download: true)),
+                    FilledButton.icon(
+                      onPressed: () => _go(context, s, download: false),
+                      icon: const Icon(Icons.play_arrow_rounded), label: const Text('Play'),
+                    ),
+                  ]),
+                ),
+            ]),
+          ),
+        ),
+      ]),
+    );
+  }
+}
+
+#### FILE: lib/player.dart
+import 'package:chewie/chewie.dart';
+import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+import 'package:video_player/video_player.dart';
+
+class PlayerView extends StatefulWidget {
+  final String url, title;
+  const PlayerView({super.key, required this.url, required this.title});
+  @override
+  State<PlayerView> createState() => _PlayerViewState();
+}
+
+class _PlayerViewState extends State<PlayerView> {
+  late final VideoPlayerController vc;
+  ChewieController? cc;
+
+  @override
+  void initState() {
+    super.initState();
+    SystemChrome.setPreferredOrientations([DeviceOrientation.landscapeLeft, DeviceOrientation.landscapeRight]);
+    vc = VideoPlayerController.networkUrl(Uri.parse(widget.url));
+    vc.initialize().then((_) {
+      if (!mounted) return;
+      setState(() => cc = ChewieController(videoPlayerController: vc, autoPlay: true, aspectRatio: vc.value.aspectRatio));
+    });
+  }
+
+  @override
+  void dispose() {
+    cc?.dispose();
+    vc.dispose();
+    SystemChrome.setPreferredOrientations(DeviceOrientation.values);
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) => Scaffold(
+        backgroundColor: Colors.black,
+        body: Stack(children: [
+          Center(child: cc == null ? const CircularProgressIndicator() : Chewie(controller: cc!)),
+          SafeArea(child: BackButton(color: Colors.white)),
+        ]),
+      );
+}
+
+#### FILE: google-services.json
+{
+  "project_info": {
+    "project_number": "876419660977",
+    "firebase_url": "https://cheetah-70c03-default-rtdb.asia-southeast1.firebasedatabase.app",
+    "project_id": "cheetah-70c03",
+    "storage_bucket": "cheetah-70c03.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:876419660977:android:6937e443e0179e4a44b690",
+        "android_client_info": {
+          "package_name": "com.cheetahapp"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyBoQCeWAHWtbjdIY9zpJXL0wHVQZJfI5BA"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
