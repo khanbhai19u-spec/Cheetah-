@@ -1,0 +1,134 @@
+name: Build Cheetah APK
+
+on:
+  push:
+    branches: [main, master]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+
+      - name: Unpack bundles into project files (older first, newer overrides)
+        run: |
+          python3 - <<'PY'
+          import re, glob, os
+          def key(f):
+              return [int(x) if x.isdigit() else x for x in re.split(r'(\d+)', f)]
+          found = sorted(glob.glob('cheetah-github-bundle*.txt'), key=key)
+          if not found:
+              raise SystemExit('No cheetah-github-bundle*.txt file in the repo')
+          for src in found:
+              print('Using', src)
+              text = open(src, encoding='utf-8').read()
+              parts = re.split(r'(?m)^########## FILE: (.+?) ##########\n', text)
+              n = 0
+              for i in range(1, len(parts), 2):
+                  name = parts[i].strip()
+                  if name.startswith('.github/'):
+                      continue
+                  os.makedirs(os.path.dirname(name) or '.', exist_ok=True)
+                  open(name, 'w', encoding='utf-8').write(parts[i + 1].rstrip() + '\n')
+                  n += 1
+              print('  wrote', n, 'files')
+          PY
+          ls lib
+
+      - name: Generate Android project
+        run: |
+          cp -r lib /tmp/lib_bak
+          cp pubspec.yaml /tmp/pubspec_bak.yaml
+          flutter create . --org com --project-name cheetahapp --platforms android
+          rm -rf lib && cp -r /tmp/lib_bak lib
+          cp /tmp/pubspec_bak.yaml pubspec.yaml
+
+      - name: Patch Android config
+        run: |
+          sed -i 's/minSdk = flutter.minSdkVersion/minSdk = 23/; s/minSdkVersion flutter.minSdkVersion/minSdkVersion 23/' android/app/build.gradle* || true
+          M=android/app/src/main/AndroidManifest.xml
+          sed -i 's#<application#<uses-permission android:name="android.permission.INTERNET"/>\n    <uses-permission android:name="android.permission.POST_NOTIFICATIONS"/>\n    <application android:usesCleartextTraffic="true"#' $M
+          sed -i 's/android:label="[^"]*"/android:label="Cheetah"/' $M
+
+      - name: Make app icon (uses any logo png/jpg in repo, else plain red)
+        run: |
+          mkdir -p assets
+          # Keep real logo_data.dart if bundle provided it; otherwise use asset-based Logo
+          if ! grep -q "kLogoBytes" lib/logo_data.dart 2>/dev/null; then
+          cat > lib/logo_data.dart <<'EOF'
+          import 'package:flutter/material.dart';
+
+          class Logo extends StatelessWidget {
+            final double size;
+            final double radius;
+            const Logo({super.key, this.size = 96, this.radius = 24});
+
+            @override
+            Widget build(BuildContext context) => ClipRRect(
+                  borderRadius: BorderRadius.circular(radius),
+                  child: Image.asset('assets/icon.png',
+                      width: size, height: size, fit: BoxFit.cover, gaplessPlayback: true),
+                );
+          }
+          EOF
+          fi
+          python3 -m pip install -q --break-system-packages pillow || python3 -m pip install -q pillow || true
+          python3 - <<'PY'
+          import os, zlib, struct
+          skip = ('.git', '.dart_tool', 'build', 'android', 'node_modules')
+          def solid(path, n=1024):
+              raw = zlib.compress((b'\x00' + bytes([229, 23, 43]) * n) * n)
+              def ch(t, d):
+                  return struct.pack('>I', len(d)) + t + d + struct.pack('>I', zlib.crc32(t + d) & 0xffffffff)
+              open(path, 'wb').write(b'\x89PNG\r\n\x1a\n' + ch(b'IHDR', struct.pack('>IIBBBBB', n, n, 8, 2, 0, 0, 0)) + ch(b'IDAT', raw) + ch(b'IEND', b''))
+          cands = ['assets/icon.png']
+          for d, ds, fs in os.walk('.'):
+              ds[:] = [x for x in ds if x not in skip and x != 'assets']
+              for f in fs:
+                  if f.lower().endswith(('.png', '.jpg', '.jpeg')):
+                      cands.append(os.path.join(d, f))
+          done = False
+          try:
+              from PIL import Image
+              for c in cands:
+                  try:
+                      im = Image.open(c).convert('RGB')
+                      im.resize((1024, 1024)).save('assets/icon.tmp.png')
+                      os.replace('assets/icon.tmp.png', 'assets/icon.png')
+                      print('Icon from', c)
+                      done = True
+                      break
+                  except Exception as e:
+                      print('Skip', c, e)
+          except Exception as e:
+              print('Pillow missing:', e)
+          if not done:
+              print('No valid logo image found, using plain red icon')
+              solid('assets/icon.png')
+          PY
+          ls -la assets
+          test -s assets/icon.png
+
+      - run: flutter pub get
+
+      - name: App icon
+        run: dart run flutter_launcher_icons
+
+      - name: Build release APK
+        run: flutter build apk --release
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Cheetah-APK
+          path: build/app/outputs/flutter-apk/app-release.apk
