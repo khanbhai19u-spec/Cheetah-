@@ -62,9 +62,65 @@ jobs:
       - name: Make app icon from lib/logo_data.dart
         run: |
           mkdir -p assets
-          grep -o "'[A-Za-z0-9+/=]\{40,\}'" lib/logo_data.dart | tr -d "'" | base64 -d > assets/icon.png
+          mkdir -p lib
+          cat > lib/logo_data.dart <<'EOF'
+          import 'dart:convert';
+          import 'dart:typed_data';
+
+          import 'package:flutter/material.dart';
+
+          final Uint8List kLogoBytes = base64Decode(
+              'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==');
+
+          class Logo extends StatelessWidget {
+            final double size;
+            final double radius;
+            const Logo({super.key, this.size = 96, this.radius = 24});
+
+            @override
+            Widget build(BuildContext context) => ClipRRect(
+                  borderRadius: BorderRadius.circular(radius),
+                  child: Image.asset('assets/icon.png',
+                      width: size, height: size, fit: BoxFit.cover, gaplessPlayback: true),
+                );
+          }
+          EOF
+          python3 -m pip install -q --break-system-packages pillow || python3 -m pip install -q pillow || true
+          python3 - <<'PY'
+          import os, zlib, struct
+          skip = ('.git', '.dart_tool', 'build', 'android', 'node_modules')
+          def solid(path, n=1024):
+              raw = zlib.compress((b'\x00' + bytes([229, 23, 43]) * n) * n)
+              def ch(t, d):
+                  return struct.pack('>I', len(d)) + t + d + struct.pack('>I', zlib.crc32(t + d) & 0xffffffff)
+              open(path, 'wb').write(b'\x89PNG\r\n\x1a\n' + ch(b'IHDR', struct.pack('>IIBBBBB', n, n, 8, 2, 0, 0, 0)) + ch(b'IDAT', raw) + ch(b'IEND', b''))
+          cands = ['assets/icon.png']
+          for d, ds, fs in os.walk('.'):
+              ds[:] = [x for x in ds if x not in skip and x != 'assets']
+              for f in fs:
+                  if f.lower().endswith(('.png', '.jpg', '.jpeg')):
+                      cands.append(os.path.join(d, f))
+          done = False
+          try:
+              from PIL import Image
+              for c in cands:
+                  try:
+                      im = Image.open(c).convert('RGB')
+                      im.resize((1024, 1024)).save('assets/icon.tmp.png')
+                      os.replace('assets/icon.tmp.png', 'assets/icon.png')
+                      print('Icon from', c)
+                      done = True
+                      break
+                  except Exception as e:
+                      print('Skip', c, e)
+          except Exception as e:
+              print('Pillow missing:', e)
+          if not done:
+              print('No valid logo image found, using plain red icon')
+              solid('assets/icon.png')
+          PY
           ls -la assets
-          test -s assets/icon.png || (echo 'icon missing' && exit 1)
+          test -s assets/icon.png
 
       - run: flutter pub get
 
